@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+ROOT_DIR = "/nas/ucb/ebronstein/deepul"
+
 
 def savefig(fname: str, show_figure: bool = True) -> None:
     if not exists(dirname(fname)):
@@ -152,7 +154,7 @@ def load_colored_mnist_text(file_path):
 
 
 def get_data_dir(hw_number: int):
-    return join('deepul', 'homeworks', f'hw{hw_number}', 'data')
+    return join(ROOT_DIR, 'deepul', 'homeworks', f'hw{hw_number}', 'data')
 
 
 def quantize(images: np.ndarray, n_bits: int = 8):
