@@ -222,7 +222,7 @@ def q3ab_save_results(dset_type, part, fn, generate=True, save=True):
     return train_losses, test_losses, samples, model
 
 
-def q3c_save_results(dset_type, fn, model):
+def q3c_save_results(dset_type, fn, model, save=True):
     data_dir = get_data_dir(1)
     if dset_type == 1:
         train_data, test_data = load_pickled_data(
@@ -246,17 +246,31 @@ def q3c_save_results(dset_type, fn, model):
     samples_no_cache = samples_no_cache.astype("float32") / 3 * 255
     samples_with_cache = samples_with_cache.astype("float32") / 3 * 255
 
-    save_timing_plot(
+    if save:
+        save_timing_plot(
+            time_list_no_cache,
+            time_list_with_cache,
+            "Q3(c) Timing Plot",
+            f"results/q3_c_dset{dset_type}_timing_plot.png",
+            time1_label="no cache",
+            time2_label="with cache",
+        )
+        samples_no_cache_fname = f"results/q3_c_no_cache_dset{dset_type}_samples.png"
+        samples_with_cache_fname = f"results/q3_c_with_cache_dset{dset_type}_samples.png"
+    else:
+        samples_no_cache_fname = None
+        samples_with_cache_fname = None
+
+    show_samples(samples_no_cache, samples_no_cache_fname)
+    show_samples(
+        samples_with_cache, samples_with_cache_fname
+    )
+
+    return (
         time_list_no_cache,
         time_list_with_cache,
-        "Q3(c) Timing Plot",
-        f"results/q3_c_dset{dset_type}_timing_plot.png",
-        time1_label="no cache",
-        time2_label="with cache",
-    )
-    show_samples(samples_no_cache, f"results/q3_c_no_cache_dset{dset_type}_samples.png")
-    show_samples(
-        samples_with_cache, f"results/q3_c_with_cache_dset{dset_type}_samples.png"
+        samples_no_cache,
+        samples_with_cache,
     )
 
 
