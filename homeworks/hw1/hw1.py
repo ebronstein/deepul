@@ -344,6 +344,26 @@ def sample(model, num_samples, seq_len, device, bos_token, use_cache=True):
     return np.asarray(samples.cpu()), time_list
 
 
+class ColoredImageTokenizer:
+    def __init__(self, num_colors_per_channel=4):
+        self.base = num_colors_per_channel
+
+    def encode(self, x):
+        # x has shape [batch_size, height, width, num_channels]
+        num_channels = x.shape[-1]
+        base_arr = np.array([self.base**i for i in range(num_channels)])
+        # Shape: [batch_size, height, width]
+        return x.dot(base_arr)
+
+    def decode(self, x):
+        # x has shape [batch_size, height, width]
+        x_decoded = np.zeros(x.shape + (3,), dtype=np.float32)
+        x_decoded[..., 0] = x % self.base
+        x_decoded[..., 1] = (x // self.base) % self.base
+        x_decoded[..., 2] = (x // (self.base**2)) % self.base
+        return x_decoded
+
+
 def q3_a(train_data, test_data, image_shape, dset_id, generate=True):
     """
     train_data: A (n_train, H, W, 1) uint8 numpy array of color images with values in {0, 1, 2, 3}
@@ -445,12 +465,9 @@ def q3_b(train_data, test_data, image_shape, dset_id, generate=True):
     assert num_channels == 3
 
     # Tokenize the input
-    base = 4
-    num_channels = train_data.shape[-1]
-    base_arr = np.array([base**i for i in range(num_channels)])
-    # Shape: [batch_size, height, width]
-    train_data = train_data.dot(base_arr)
-    test_data = test_data.dot(base_arr)
+    tokenizer = ColoredImageTokenizer(4)
+    train_data = tokenizer.encode(train_data)
+    test_data = tokenizer.encode(test_data)
 
     # Shape: [batch_size, seq_len]
     train_data = train_data.reshape(-1, height * width).astype(np.int32)
@@ -484,11 +501,7 @@ def q3_b(train_data, test_data, image_shape, dset_id, generate=True):
             model, num_samples, height * width, "cuda", BOS_TOKEN, use_cache=True
         )
         samples = samples.reshape(samples.shape[0], height, width)
-        samples_decoded = np.zeros(samples.shape + (3,), dtype=np.uint8)
-        samples_decoded[..., 0] = samples % base
-        samples_decoded[..., 1] = (samples // base) % base
-        samples_decoded[..., 2] = (samples // (base**2)) % base
-        samples = samples_decoded
+        samples = tokenizer.decode(samples)
     else:
         samples = None
 
@@ -511,7 +524,9 @@ def q3_c(model, train_data, test_data, image_shape, dset_id):
     num_samples = 100
     height, width = train_data.shape[1], train_data.shape[2]
     BOS_TOKEN = 64
+
     base = 4
+    tokenizer = ColoredImageTokenizer(base)
 
     samples_lists = []
     time_lists = []
@@ -523,11 +538,8 @@ def q3_c(model, train_data, test_data, image_shape, dset_id):
             model, num_samples, height * width, "cuda", BOS_TOKEN, use_cache=use_cache
         )
         samples = samples.reshape(samples.shape[0], height, width)
-        samples_decoded = np.zeros(samples.shape + (3,), dtype=np.uint8)
-        samples_decoded[..., 0] = samples % base
-        samples_decoded[..., 1] = samples // base
-        samples_decoded[..., 2] = samples // (base**2)
-        samples_lists.append(samples_decoded)
+        samples = tokenizer.decode(samples)
+        samples_lists.append(samples)
         time_lists.append(time_list)
 
     time_list_with_cache, time_list_no_cache = time_lists
@@ -548,13 +560,13 @@ if __name__ == "__main__":
     # q3ab_save_results(2, "a", q3_a)
 
     print("Q 3b ds 1")
-    model_q3b_ds1 = q3ab_save_results(1, "b", q3_b)[-1]
+    model_q3b_ds1 = q3ab_save_results(1, "b", q3_b, generate=False, save=False)[-1]
     print("Q 3c ds 1")
     q3c_save_results(1, q3_c, model_q3b_ds1)
     del model_q3b_ds1
 
     print("Q 3b ds 2")
-    model_q3b_ds2 = q3ab_save_results(2, "b", q3_b)[-1]
+    model_q3b_ds2 = q3ab_save_results(2, "b", q3_b, generate=False, save=False)[-1]
     print("Q 3c ds 2")
     q3c_save_results(2, q3_c, model_q3b_ds2)
     del model_q3b_ds2
