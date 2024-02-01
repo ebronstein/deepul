@@ -181,7 +181,7 @@ def visualize_q2b_data(dset_type):
 
 
 # Question 3
-def q3ab_save_results(dset_type, part, fn):
+def q3ab_save_results(dset_type, part, fn, generate=True, save=True):
     if part == "a":
         dataset_suffix = ""
         channel = 1
@@ -205,20 +205,24 @@ def q3ab_save_results(dset_type, part, fn):
     else:
         raise Exception()
 
-    train_losses, test_losses, samples = fn(train_data, test_data, img_shape, dset_type)
-    samples = samples.astype("float32") / channel * 255
+    train_losses, test_losses, samples, model = fn(train_data, test_data, img_shape, dset_type, generate=generate)
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
-    save_training_plot(
-        train_losses,
-        test_losses,
-        f"Q3({part}) Dataset {dset_type} Train Plot",
-        f"results/q3_{part}_dset{dset_type}_train_plot.png",
-    )
-    show_samples(samples, f"results/q3_{part}_dset{dset_type}_samples.png")
+    if save:
+        save_training_plot(
+            train_losses,
+            test_losses,
+            f"Q3({part}) Dataset {dset_type} Train Plot",
+            f"results/q3_{part}_dset{dset_type}_train_plot.png",
+        )
+    if generate:
+        samples = samples.astype("float32") / channel * 255
+        show_samples(samples, f"results/q3_{part}_dset{dset_type}_samples.png")
+
+    return train_losses, test_losses, samples, model
 
 
-def q3c_save_results(dset_type, fn):
+def q3c_save_results(dset_type, fn, model):
     data_dir = get_data_dir(1)
     if dset_type == 1:
         train_data, test_data = load_pickled_data(
@@ -238,7 +242,7 @@ def q3c_save_results(dset_type, fn):
         time_list_with_cache,
         samples_no_cache,
         samples_with_cache,
-    ) = fn(train_data, test_data, img_shape, dset_type)
+    ) = fn(model, train_data, test_data, img_shape, dset_type)
     samples_no_cache = samples_no_cache.astype("float32") / 3 * 255
     samples_with_cache = samples_with_cache.astype("float32") / 3 * 255
 
