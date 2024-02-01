@@ -1,3 +1,4 @@
+import argparse
 import itertools
 import os
 import time
@@ -553,20 +554,165 @@ def q3_c(model, train_data, test_data, image_shape, dset_id):
     )
 
 
-if __name__ == "__main__":
+def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save=True):
+    """
+    train_data: A (n_train, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    test_data: A (n_test, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    image_shape: (H, W, C), height, width, and # of channels of the image
+    dset_id: An identifying number of which dataset is given (1 or 2). Most likely
+             used to set different hyperparameters for different datasets
+    vqvae: a vqvae model, trained on dataset dset_id
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a numpy array of size (100, H, C, W) of samples with values in {0, 1, 2, 3}
+    """
+
+    if dset_id == 1:
+        batch_size = 64
+    elif dset_id == 2:
+        batch_size = 64
+
+    epochs = 30
+    lr = 1e-3
+    num_layers = 4
+    d_model = 128
+    num_heads = 4
+    dropout = 0.0
+    verbose = True
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    # Set to None to use the full dataset
+    max_num_train_examples = None
+    if max_num_train_examples is not None:
+        train_data = train_data[:max_num_train_examples]
+
+    num_train_examples, height, width, num_channels = train_data.shape
+    assert num_channels == 3
+    num_test_examples = test_data.shape[0]
+
+    # Tokenize the input
+    if verbose:
+        print("Quantizing...")
+    # Shape: [num_train_examples, 7, 7]
+    train_data = vqvae.quantize(train_data)
+    # Shape: [num_test_examples, 7, 7]
+    test_data = vqvae.quantize(test_data)
+    quantized_height, quantized_width = train_data.shape[1:]
+    assert train_data.shape[0] == num_train_examples
+    assert test_data.shape[0] == num_test_examples
+
+    # Shape: [batch_size, seq_len]
+    train_data = train_data.reshape(num_train_examples, -1).to(torch.int32)
+    test_data = test_data.reshape(num_test_examples, -1).to(torch.int32)
+
+    vocab_size = vqvae.n_embeddings + 1
+
+    # Prepend BOS token to the input
+    BOS_TOKEN = vqvae.n_embeddings
+    fill_tensor = torch.full((train_data.shape[0], 1), BOS_TOKEN)
+    train_data = torch.cat((fill_tensor, train_data), dim=1)
+
+    train_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_loader = data.DataLoader(test_data, batch_size=batch_size)
+
+    seq_len = train_data.shape[1]
+    model = Transformer(
+        seq_len, vocab_size, num_layers, d_model, num_heads, dropout
+    ).cuda()
+
+    if verbose:
+        print("Training...")
+    train_losses, test_losses = train_transformer(
+        model, train_loader, test_loader, epochs, lr, verbose=verbose
+    )
+
+    if verbose:
+        print("Sampling...")
+
+    if generate:
+        num_samples = 100
+        samples, _ = sample(
+            model,
+            num_samples,
+            quantized_height * quantized_width,
+            "cuda",
+            BOS_TOKEN,
+            use_cache=True,
+        )
+        samples = samples.reshape(samples.shape[0], quantized_height, quantized_width)
+        # Clip samples
+        samples = np.clip(samples, 0, 3)
+        samples = vqvae.decode(samples)
+    else:
+        samples = None
+
+    return train_losses, test_losses, samples, model
+
+
+def main():
+    # Create the parser
+    parser = argparse.ArgumentParser(description="Process some inputs.")
+
+    # Add arguments
+    parser.add_argument(
+        "-q",
+        "--question",
+        type=int,
+        choices=range(1, 7),
+        required=True,
+        help="Question number (1 through 6)",
+    )
+    parser.add_argument(
+        "-p",
+        "--part",
+        type=str,
+        choices=["a", "b", "c"],
+        required=True,
+        help="Part (a, b, or c)",
+    )
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        type=int,
+        choices=[1, 2],
+        required=True,
+        help="Dataset number (1 or 2)",
+    )
+
+    # Parse the arguments
+    args = parser.parse_args()
+    dataset = args.dataset
+    question = args.question
+    part = args.part
+
+    print(f"Dataset: {args.dataset}, Question: {args.question}, Part: {args.part}")
+
     # print("Q 3a ds 1")
     # q3ab_save_results(1, "a", q3_a)
     # print("Q 3a ds 2")
     # q3ab_save_results(2, "a", q3_a)
 
-    print("Q 3b ds 1")
-    model_q3b_ds1 = q3ab_save_results(1, "b", q3_b, generate=False, save=False)[-1]
-    print("Q 3c ds 1")
-    q3c_save_results(1, q3_c, model_q3b_ds1)
-    del model_q3b_ds1
+    if question == 3:
+        if part == "c":
+            print(f"Q 3b ds {dataset}")
+            model = q3ab_save_results(dataset, "b", q3_b, generate=False, save=False)[
+                -1
+            ]
+            print(f"Q 3c ds {dataset}")
+            q3c_save_results(dataset, q3_c, model)
+            return
+    elif question == 4:
+        if part == "b":
+            print(f"Q 4b ds {dataset}")
+            q4b_save_results(dataset, q4_b)
+            return
 
-    print("Q 3b ds 2")
-    model_q3b_ds2 = q3ab_save_results(2, "b", q3_b, generate=False, save=False)[-1]
-    print("Q 3c ds 2")
-    q3c_save_results(2, q3_c, model_q3b_ds2)
-    del model_q3b_ds2
+    raise NotImplementedError(f"Question {question} part {part} not implemented")
+
+
+if __name__ == "__main__":
+    main()
