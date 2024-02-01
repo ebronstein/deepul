@@ -48,11 +48,17 @@ def save_timing_plot(
 
     plt.plot(time_1, label=time1_label)
     plt.plot(time_2, label=time2_label)
+
+    lower_limit = min(np.percentile(time_1, 5), np.percentile(time_2, 5))
+    upper_limit = max(np.percentile(time_1, 95), np.percentile(time_2, 95))
+    plt.ylim(lower_limit, upper_limit)
+
     plt.legend()
     plt.title(title)
     plt.xlabel("sample step")
     plt.ylabel("seconds")
-    savefig(fname)
+    if fname is not None:
+        savefig(fname)
 
 
 def save_scatter_2d(data: np.ndarray, title: str, fname: str) -> None:
