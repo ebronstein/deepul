@@ -311,7 +311,7 @@ def q4a_save_results(dset_type, fn):
     show_samples(vq_images, f"results/q4_a_dset{dset_type}_samples.png", nrow=2)
 
 
-def q4b_save_results(dset_type, fn):
+def q4b_save_results(dset_type, fn, generate=True, save=True):
     data_dir = get_data_dir(1)
     if dset_type == 1:
         #  @ load colored mnist
@@ -327,19 +327,25 @@ def q4b_save_results(dset_type, fn):
     else:
         raise Exception()
 
-    train_losses, test_losses, samples = fn(train_data, test_data, img_shape, dset_type, vqvae)
-
-    # decode? TODO
-    samples = samples.astype("float32") / 3 * 255
+    train_losses, test_losses, samples, model = fn(train_data, test_data, img_shape, dset_type, vqvae, generate=generate)
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
-    save_training_plot(
-        train_losses,
-        test_losses,
-        f"Qb(a) Dataset {dset_type} Train Plot",
-        f"results/q4_b_dset{dset_type}_train_plot.png",
-    )
-    show_samples(samples, f"results/q4_b_dset{dset_type}_samples.png")
+    if save:
+        save_training_plot(
+            train_losses,
+            test_losses,
+            f"Qb(a) Dataset {dset_type} Train Plot",
+            f"results/q4_b_dset{dset_type}_train_plot.png",
+        )
+        samples_fname = f"results/q4_b_dset{dset_type}_samples.png"
+    else:
+        samples_fname = None
+
+    if generate:
+        samples = samples.astype("float32") / 3 * 255
+        show_samples(samples, samples_fname)
+
+    return train_losses, test_losses, samples, model
 
 
 # Question 5
