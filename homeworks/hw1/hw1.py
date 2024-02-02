@@ -136,9 +136,7 @@ class MultiHeadAttention(nn.Module):
             self.cache = {"k": k, "v": v}
 
         # [batch_size, num_heads, seq_len, seq_len]
-        scaled_attention_logits = (
-            torch.matmul(q, k.transpose(-2, -1)) / self.depth**0.5
-        )
+        scaled_attention_logits = torch.matmul(q, k.transpose(-2, -1)) / self.depth**0.5
 
         # Apply mask to the scaled attention logits if not using cache.
         if not use_cache:
@@ -314,7 +312,15 @@ def train_transformer(
     return train_losses, test_losses
 
 
-def sample(model, num_samples, seq_len, device, bos_token, use_cache=True):
+def sample(
+    model,
+    num_samples,
+    seq_len,
+    device,
+    bos_token,
+    use_cache=True,
+    prevent_sampling_bos=True,
+):
     model.eval()
     if use_cache:
         model.clear_cache()
@@ -333,6 +339,9 @@ def sample(model, num_samples, seq_len, device, bos_token, use_cache=True):
         time_delta = time.time() - start
         if i > 0:
             time_list.append(time_delta)
+        if prevent_sampling_bos:
+            # Prevent sampling the <bos> token again
+            logits[:, bos_token] = -1e10
         # Shape: [num_samples, vocab_size, seq_len]
         probs = F.softmax(logits, dim=1)
         # Shape: [num_samples, seq_len] (seq_len = 1 if use_cache=True)
@@ -644,8 +653,6 @@ def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save
             use_cache=True,
         )
         samples = samples.reshape(samples.shape[0], quantized_height, quantized_width)
-        # Clip samples
-        samples = np.clip(samples, 0, 3)
         samples = vqvae.decode(samples)
     else:
         samples = None
