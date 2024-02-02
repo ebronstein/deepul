@@ -334,7 +334,7 @@ def q4b_save_results(dset_type, fn, generate=True, save=True):
         save_training_plot(
             train_losses,
             test_losses,
-            f"Qb(a) Dataset {dset_type} Train Plot",
+            f"Q4(b) Dataset {dset_type} Train Plot",
             f"results/q4_b_dset{dset_type}_train_plot.png",
         )
         samples_fname = f"results/q4_b_dset{dset_type}_samples.png"
@@ -361,29 +361,35 @@ def visualize_q5_data():
         print("-" * 80 + "\n")
 
 
-def q5a_save_results(fn):
+def q5a_save_results(fn, generate=True, save=True):
     dir_path = get_data_dir(1)
     train_data, test_data = load_text_data(join(dir_path, "poetry.pkl"))
-    img_shape = (28, 28, 3)
     (
         train_losses,
         test_losses,
         text_samples,
+        model,
     ) = fn(
         train_data,
         test_data,
+        generate=generate,
     )
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
-    save_training_plot(
-        train_losses,
-        test_losses,
-        f"Q5(a) Dataset Poetry Train Plot",
-        f"results/q5_a_train_plot.png",
-    )
-    for idx, txt in enumerate(text_samples):
-        print(f"Sample {idx+1}\n{txt}\n")
-    save_text_to_plot(text_samples, f"results/q5_a_samples.png")
+    if save:
+        save_training_plot(
+            train_losses,
+            test_losses,
+            f"Q5(a) Dataset Poetry Train Plot",
+            f"results/q5_a_train_plot.png",
+        )
+    if generate:
+        for idx, txt in enumerate(text_samples):
+            print(f"Sample {idx+1}\n{txt}\n")
+        if save:
+            save_text_to_plot(text_samples, f"results/q5_a_samples.png")
+
+    return train_losses, test_losses, text_samples, model
 
 
 # Question 6
