@@ -193,8 +193,9 @@ def save_text_to_plot(text_samples, filename, image_width=600, image_height=900)
     padding = 20 * scale_factor
     spacing = 4 * scale_factor
     title_spacing = 40 * scale_factor
-    title_font = ImageFont.truetype("arial.ttf", title_font_size)
-    text_font = ImageFont.truetype("arial.ttf", text_font_size)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    title_font = ImageFont.truetype(font_path, title_font_size)
+    text_font = ImageFont.truetype(font_path, text_font_size)
 
     # Create an image canvas
     image = Image.new("RGB", (image_width, image_height), background_color)
