@@ -33,7 +33,10 @@ def save_training_plot(
     plt.title(title)
     plt.xlabel("Epoch")
     plt.ylabel("NLL")
-    savefig(fname)
+    if fname is None:
+        plt.show()
+    else:
+        savefig(fname)
 
 
 def save_timing_plot(

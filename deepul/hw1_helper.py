@@ -205,7 +205,9 @@ def q3ab_save_results(dset_type, part, fn, generate=True, save=True):
     else:
         raise Exception()
 
-    train_losses, test_losses, samples, model = fn(train_data, test_data, img_shape, dset_type, generate=generate)
+    train_losses, test_losses, samples, model = fn(
+        train_data, test_data, img_shape, dset_type, generate=generate
+    )
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
     if save:
@@ -225,14 +227,10 @@ def q3ab_save_results(dset_type, part, fn, generate=True, save=True):
 def q3c_save_results(dset_type, fn, model, save=True):
     data_dir = get_data_dir(1)
     if dset_type == 1:
-        train_data, test_data = load_pickled_data(
-            join(data_dir, f"shapes_colored.pkl")
-        )
+        train_data, test_data = load_pickled_data(join(data_dir, f"shapes_colored.pkl"))
         img_shape = (20, 20, 3)
     elif dset_type == 2:
-        train_data, test_data = load_pickled_data(
-            join(data_dir, f"mnist_colored.pkl")
-        )
+        train_data, test_data = load_pickled_data(join(data_dir, f"mnist_colored.pkl"))
         img_shape = (28, 28, 3)
     else:
         raise Exception()
@@ -256,15 +254,15 @@ def q3c_save_results(dset_type, fn, model, save=True):
             time2_label="with cache",
         )
         samples_no_cache_fname = f"results/q3_c_no_cache_dset{dset_type}_samples.png"
-        samples_with_cache_fname = f"results/q3_c_with_cache_dset{dset_type}_samples.png"
+        samples_with_cache_fname = (
+            f"results/q3_c_with_cache_dset{dset_type}_samples.png"
+        )
     else:
         samples_no_cache_fname = None
         samples_with_cache_fname = None
 
     show_samples(samples_no_cache, samples_no_cache_fname)
-    show_samples(
-        samples_with_cache, samples_with_cache_fname
-    )
+    show_samples(samples_with_cache, samples_with_cache_fname)
 
     return (
         time_list_no_cache,
@@ -327,7 +325,9 @@ def q4b_save_results(dset_type, fn, generate=True, save=True):
     else:
         raise Exception()
 
-    train_losses, test_losses, samples, model = fn(train_data, test_data, img_shape, dset_type, vqvae, generate=generate)
+    train_losses, test_losses, samples, model = fn(
+        train_data, test_data, img_shape, dset_type, vqvae, generate=generate
+    )
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
     if save:
@@ -441,7 +441,7 @@ def plot_q6a_samples(samples_img_txt_tuples, filename=None, fig_title=None):
         savefig(filename)
 
 
-def q6a_save_results(fn):
+def q6a_save_results(fn, generate=True, save=True):
     data_dir = get_data_dir(1)
     train_data, test_data, train_labels, test_labels = load_colored_mnist_text(
         join(data_dir, "colored_mnist_with_text.pkl")
@@ -457,6 +457,7 @@ def q6a_save_results(fn):
         samples_from_image,
         samples_from_text,
         samples_unconditional,
+        model,
     ) = fn(
         train_data,
         test_data,
@@ -466,27 +467,48 @@ def q6a_save_results(fn):
         img_test_prompt,
         text_test_prompt,
         vqvae,
+        generate=generate,
     )
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
+    training_plot_fname = "results/q6_a_train_plot.png" if save else None
     save_training_plot(
         train_losses,
         test_losses,
-        f"Q6(a) Train Plot",
-        f"results/q6_a_train_plot.png",
+        "Q6(a) Train Plot",
+        training_plot_fname,
     )
-    plot_q6a_samples(
+    if generate:
+        samples_from_image_fname = (
+            "results/q6_a_samples_img_conditioned.png" if save else None
+        )
+        samples_from_text_fname = (
+            "results/q6_a_samples_text_conditioned.png" if save else None
+        )
+        samples_unconditional_fname = (
+            "results/q6_a_samples_unconditional.png" if save else None
+        )
+        plot_q6a_samples(
+            samples_from_image,
+            samples_from_image_fname,
+            fig_title="Image Conditioned Samples",
+        )
+        plot_q6a_samples(
+            samples_from_text,
+            samples_from_text_fname,
+            fig_title="Text Conditioned Samples",
+        )
+        plot_q6a_samples(
+            samples_unconditional,
+            samples_unconditional_fname,
+            fig_title="Unconditional Samples",
+        )
+
+    return (
+        train_losses,
+        test_losses,
         samples_from_image,
-        f"results/q6_a_samples_img_conditioned.png",
-        fig_title="Image Conditioned Samples",
-    )
-    plot_q6a_samples(
         samples_from_text,
-        f"results/q6_a_samples_text_conditioned.png",
-        fig_title="Text Conditioned Samples",
-    )
-    plot_q6a_samples(
         samples_unconditional,
-        f"results/q6_a_samples_unconditional.png",
-        fig_title="Unconditional Samples",
+        model,
     )
