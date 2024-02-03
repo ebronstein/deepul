@@ -2,6 +2,7 @@ import argparse
 import itertools
 import os
 import time
+from collections import Counter
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -374,6 +375,294 @@ class ColoredImageTokenizer:
         return x_decoded
 
 
+class CharTokenizedTextDataset(data.Dataset):
+    def __init__(self, data, context_length=128):
+        self.bos_id = 0
+        self.eos_id = 1
+        self.token_to_id = {"<bos>": self.bos_id, "<eos>": self.eos_id}
+        self.id_to_token = {self.bos_id: "<bos>", self.eos_id: "<eos>"}
+        self.context_length = context_length
+        self.encoded_data = []
+
+        self.build_vocabulary(data)
+        self.tokenize_data(data)
+
+    @property
+    def vocab_size(self) -> int:
+        return len(self.token_to_id)
+
+    def build_vocabulary(self, data):
+        unique_chars = set(char for sequence in data for char in sequence)
+        for i, char in enumerate(unique_chars, start=2):
+            self.token_to_id[char] = i
+            self.id_to_token[i] = char
+
+    def tokenize_data(self, data):
+        for sequence in data:
+            tokenized_sequence = [self.token_to_id["<bos>"]]
+            tokenized_sequence += [self.token_to_id[char] for char in sequence]
+            tokenized_sequence += [self.token_to_id["<eos>"]]
+
+            # Split into subsequences of the desired context_length
+            for i in range(0, len(tokenized_sequence), self.context_length - 1):
+                subsequence = tokenized_sequence[i : i + self.context_length]
+                # If the subsequence is too short, pad it with <eos> tokens
+                if len(subsequence) < self.context_length:
+                    subsequence += [self.token_to_id["<eos>"]] * (
+                        self.context_length - len(subsequence)
+                    )
+                self.encoded_data.append(subsequence)
+
+    def decode(self, sequence, remove_eos=True):
+        sequence = list(sequence)
+        if remove_eos:
+            if self.eos_id in sequence:
+                eos_idx = sequence.index(self.eos_id)
+                sequence = sequence[:eos_idx]
+        tokens = [self.id_to_token[i] for i in sequence]
+        return "".join(tokens)
+
+    def __len__(self):
+        return len(self.encoded_data)
+
+    def __getitem__(self, idx):
+        return torch.tensor(self.encoded_data[idx], dtype=torch.long)
+
+
+class MultimodalDataset(data.Dataset):
+    def __init__(
+        self, text_data, image_data, vqvae, quantized_image_shape, verbose=False
+    ):
+        self.bos_token = 0
+        self.bos_str = "<bos>"
+        self.end_of_text_token = 1
+        self.end_of_text_str = "<end of text>"
+        self.end_of_image_token = 2
+        self.end_of_image_str = "<end of image>"
+        self.num_special_tokens = 3
+
+        self.text_data = text_data
+        self.image_data = image_data
+        self.vqvae = vqvae
+
+        self.quantized_image_shape = quantized_image_shape
+        self.image_sequence_length = np.prod(quantized_image_shape)
+
+        self.text_sequence_length = len(self.text_data[0].split())
+        self.compute_sequence_length()
+
+        # Build vocabulary for text
+        if verbose:
+            print("Building text vocabulary...")
+        self.build_text_vocabulary()
+        # Adjust image token IDs to not overlap with special and text tokens
+        self.image_token_offset = 2 + len(self.token_to_id) + 1
+
+        # Token ranges (start, end (exclusive))
+        self.text_token_range = (
+            self.num_special_tokens,
+            self.num_special_tokens + self.text_vocab_size,
+        )
+        self.image_token_range = (
+            self.text_token_range[1],
+            self.text_token_range[1] + self.image_vocab_size,
+        )
+
+        # Preprocess data
+        if verbose:
+            print("Preprocessing data...")
+        self.encoded_data = self.preprocess_data()
+
+    @property
+    def text_vocab_size(self) -> int:
+        return len(self.token_to_id)
+
+    @property
+    def image_vocab_size(self) -> int:
+        return self.vqvae.n_embeddings
+
+    @property
+    def vocab_size(self) -> int:
+        return self.text_vocab_size + self.image_vocab_size + self.num_special_tokens
+
+    def compute_sequence_length(self):
+        self.sequence_length = (
+            self.num_special_tokens
+            + self.text_sequence_length
+            + self.image_sequence_length
+        )
+
+    def build_text_vocabulary(self):
+        word_counts = Counter(
+            word for sentence in self.text_data for word in sentence.split()
+        )
+        self.token_to_id = {}
+        for i, word in enumerate(word_counts.keys(), start=self.num_special_tokens):
+            self.token_to_id[word] = i
+        self.id_to_token = {id: word for word, id in self.token_to_id.items()}
+
+    def preprocess_data(self):
+        encoded_data = []
+        for text, image in zip(self.text_data, self.image_data):
+            # Tokenize text
+            text_tokens = [self.token_to_id[word] for word in text.split()]
+            # Quantize image and adjust tokens
+            image_tokens = self.vqvae.quantize(image[np.newaxis, ...]).flatten()
+            image_tokens += self.image_token_offset
+
+            # Combine text and image sequences
+            sequence_ti = (
+                [self.bos_token, self.end_of_image_token]
+                + text_tokens
+                + [self.end_of_text_token]
+                + list(image_tokens)
+            )
+            sequence_it = (
+                [self.bos_token, self.end_of_text_token]
+                + list(image_tokens)
+                + [self.end_of_image_token]
+                + text_tokens
+            )
+            encoded_data.append(sequence_ti)
+            encoded_data.append(sequence_it)
+
+        return encoded_data
+
+    def decode(self, samples):
+        decoded_samples = []
+        for sample in samples:
+            if sample[0] == self.end_of_text_token:
+                # First modality is image
+                quantized_image = sample[1 : 1 + self.image_sequence_length]
+                text = sample[2 + self.image_sequence_length :]
+            elif sample[0] == self.end_of_image_token:
+                # First modality is text
+                text = sample[1 : 1 + self.text_sequence_length]
+                quantized_image = sample[2 + self.text_sequence_length :]
+            else:
+                raise ValueError(f"Invalid first token: {samples[0]}")
+            quantized_image = quantized_image.reshape(self.quantized_image_shape)[
+                np.newaxis, ...
+            ]
+            quantized_image = quantized_image - self.image_token_offset
+            # Decode the image and remove the batch dimension
+            image = vqvae.decode(quantized_image)[0]
+            text = " ".join(self.id_to_token[t] for t in text)
+            decoded_samples.append((image, text))
+
+        return decoded_samples
+
+    def __len__(self):
+        return len(self.encoded_data)
+
+    def __getitem__(self, idx):
+        sequence = self.encoded_data[idx]
+        return torch.tensor(sequence, dtype=torch.long)
+
+
+def multimodal_sample(
+    model,
+    num_samples,
+    seq_len,
+    device,
+    bos_token,
+    end_of_text_token,
+    end_of_image_token,
+    text_token_range,
+    image_token_range,
+    text_sequence_length,
+    image_sequence_length,
+    use_cache=True,
+):
+    model.eval()
+    if use_cache:
+        model.clear_cache()
+
+    # Initialize samples with <bos> token
+    samples = torch.full(
+        (num_samples, 1), fill_value=bos_token, dtype=torch.long, device=device
+    )
+
+    # Tracks the number of tokens sampled for the current modality
+    tokens_sampled_per_modality = torch.zeros(
+        num_samples, dtype=torch.long, device=device
+    )
+
+    # Initialize modality for each sample, True for text, False for image
+    current_modality = torch.full((num_samples,), True, dtype=torch.bool, device=device)
+
+    time_list = []
+
+    for step in range(seq_len):
+        start = time.time()
+        # Get logits for the last token only
+        # [num_samples, vocab_size, seq_len]
+        logits_seq = model(samples, use_cache=use_cache)
+        time_delta = time.time() - start
+        if step > 0:
+            time_list.append(time_delta)
+        # [num_samples, vocab_size]
+        logits = logits_seq[:, :, -1]
+
+        # Prevent sampling <bos> token again
+        logits[:, bos_token] = -1e10
+
+        # Mask logits based on the current modality for each sample
+        mask = torch.full_like(logits, fill_value=-1e10)
+        for idx, is_text in enumerate(current_modality):
+            if step == 0:  # At the start, only allow <end of image> or <end of text>
+                mask[idx, [end_of_text_token, end_of_image_token]] = logits[
+                    idx, [end_of_text_token, end_of_image_token]
+                ]
+            elif is_text:
+                if tokens_sampled_per_modality[idx] == text_sequence_length:
+                    # Force <end of text> token if text sequence length reached
+                    mask[idx, end_of_text_token] = 0
+                else:
+                    # Otherwise, allow only text tokens and <end of text>
+                    mask[idx, text_token_range[0] : text_token_range[1]] = logits[
+                        idx, text_token_range[0] : text_token_range[1]
+                    ]
+                    # mask[idx, end_of_text_token] = logits[idx, end_of_text_token]
+            else:  # Allow only image tokens and <end of image>
+                if tokens_sampled_per_modality[idx] == image_sequence_length:
+                    # Force <end of image> token if image sequence length reached
+                    mask[idx, end_of_image_token] = 0
+                else:
+                    # Otherwise, allow only image tokens and <end of image>
+                    mask[idx, image_token_range[0] : image_token_range[1]] = logits[
+                        idx, image_token_range[0] : image_token_range[1]
+                    ]
+                    # mask[idx, end_of_image_token] = logits[idx, end_of_image_token]
+
+        logits = mask
+
+        # Sample next token
+        probs = F.softmax(logits, dim=-1)
+        next_token = torch.multinomial(probs, 1)
+        samples = torch.cat([samples, next_token], dim=1)
+
+        # Update counters and modality
+        for idx, token in enumerate(next_token.squeeze(-1)):
+            if current_modality[idx]:  # If currently sampling text
+                if token == end_of_text_token:
+                    current_modality[idx] = False  # Switch to image
+                    tokens_sampled_per_modality[idx] = 0  # Reset counter
+                elif token != end_of_image_token:
+                    tokens_sampled_per_modality[idx] += 1
+            else:  # If currently sampling image
+                if token == end_of_image_token:
+                    current_modality[idx] = True  # Switch to text
+                    tokens_sampled_per_modality[idx] = 0  # Reset counter
+                elif token != end_of_text_token:
+                    tokens_sampled_per_modality[idx] += 1
+
+    # Remove the BOS token from the start of samples
+    samples = samples[:, 1:]
+
+    return np.asarray(samples.cpu()), time_list
+
+
 def q3_a(train_data, test_data, image_shape, dset_id, generate=True):
     """
     train_data: A (n_train, H, W, 1) uint8 numpy array of color images with values in {0, 1, 2, 3}
@@ -507,6 +796,7 @@ def q3_b(train_data, test_data, image_shape, dset_id, generate=True):
 
     if generate:
         num_samples = 100
+        # Set seq_len to the size of an image, excluding the BOS token.
         samples, _ = sample(
             model, num_samples, height * width, "cuda", BOS_TOKEN, use_cache=True
         )
@@ -660,6 +950,123 @@ def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save
     return train_losses, test_losses, samples, model
 
 
+def q6_a(
+    train_data,
+    test_data,
+    image_shape,
+    train_text,
+    test_text,
+    image_test_prompt,
+    text_test_prompt,
+    vqvae,
+    generate=True,
+):
+    """
+    train_data: A (n_train, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    test_data: A (n_test, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    image_shape: tuple (H, W, C) The shape of the images in the dataset, indicating height, width, and number of color channels.
+    train_text: list[str] Text data associated with each training image.
+    test_text: list[str] Text data associated with each test image.
+    image_test_prompt: (9, H, W, C) Image data used for generating conditional text samples during testing.
+    text_test_prompt: list of 9 strings Text prompts used for generating conditional image samples during testing.
+    vqvae: a vqvae model, trained on the relevant dataset
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a list of 9 (image, text), corresponding to the image conditioned samples
+    - a list of 9 (image, text), corresponding to the text conditions samples
+    - a list of 9 (image, text), corresponding to unconditional samples
+    """
+    batch_size = 64
+    epochs = 30
+    lr = 1e-3
+    num_layers = 4
+    d_model = 128
+    num_heads = 4
+    dropout = 0.0
+    verbose = True
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    # Set to None to use the full dataset
+    max_num_examples = None
+    if max_num_examples is not None:
+        train_data = train_data[:max_num_examples]
+        train_text = train_text[:max_num_examples]
+        test_data = test_data[:max_num_examples]
+        test_text = test_text[:max_num_examples]
+
+    quantized_image_shape = (7, 7)
+    train_dataset = MultimodalDataset(
+        train_text,
+        train_data,
+        vqvae,
+        quantized_image_shape=quantized_image_shape,
+        verbose=True,
+    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_dataset = MultimodalDataset(
+        test_text,
+        test_data,
+        vqvae,
+        quantized_image_shape=quantized_image_shape,
+        verbose=True,
+    )
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    vocab_size = train_dataset.vocab_size
+
+    seq_len = train_dataset.sequence_length
+    model = Transformer(
+        seq_len, vocab_size, num_layers, d_model, num_heads, dropout
+    ).cuda()
+
+    if verbose:
+        print("Training...")
+    train_losses, test_losses = train_transformer(
+        model, train_loader, test_loader, epochs, lr, verbose=verbose
+    )
+
+    # TODO
+    if generate:
+        if verbose:
+            print("Sampling...")
+        num_samples = 9
+        samples, _ = multimodal_sample(
+            model,
+            num_samples,
+            # Subtract 1 to account for the <bos> token
+            seq_len - 1,
+            "cuda",
+            train_dataset.bos_token,
+            train_dataset.end_of_text_token,
+            train_dataset.end_of_image_token,
+            train_dataset.text_token_range,
+            train_dataset.image_token_range,
+            train_dataset.text_sequence_length,
+            train_dataset.image_sequence_length,
+            use_cache=True,
+        )
+        samples_unconditioned = train_dataset.decode(samples)
+        # TODO: generate conditioned samples properly
+        samples_text_conditioned = samples_image_conditioned = samples_unconditioned
+    else:
+        samples_image_conditioned = samples_text_conditioned = samples_unconditioned = (
+            None
+        )
+
+    return (
+        train_losses,
+        test_losses,
+        samples_image_conditioned,
+        samples_text_conditioned,
+        samples_unconditioned,
+        model,
+    )
+
+
 def main():
     # Create the parser
     parser = argparse.ArgumentParser(description="Process some inputs.")
@@ -686,7 +1093,7 @@ def main():
         "--dataset",
         type=int,
         choices=[1, 2],
-        required=True,
+        required=False,
         help="Dataset number (1 or 2)",
     )
 
@@ -696,12 +1103,9 @@ def main():
     question = args.question
     part = args.part
 
-    print(f"Dataset: {args.dataset}, Question: {args.question}, Part: {args.part}")
-
-    # print("Q 3a ds 1")
-    # q3ab_save_results(1, "a", q3_a)
-    # print("Q 3a ds 2")
-    # q3ab_save_results(2, "a", q3_a)
+    print(
+        f"Dataset: {args.dataset or 'None'}, Question: {args.question}, Part: {args.part}"
+    )
 
     if question == 3:
         if part == "c":
@@ -716,6 +1120,11 @@ def main():
         if part == "b":
             print(f"Q 4b ds {dataset}")
             q4b_save_results(dataset, q4_b)
+            return
+    elif question == 6:
+        if part == "a":
+            print("Q 6a")
+            q6a_save_results(q6_a)
             return
 
     raise NotImplementedError(f"Question {question} part {part} not implemented")
