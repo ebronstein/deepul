@@ -1006,7 +1006,7 @@ def q6_a(
         quantized_image_shape=quantized_image_shape,
         verbose=True,
     )
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_dataset = MultimodalDataset(
         test_text,
         test_data,
@@ -1014,7 +1014,7 @@ def q6_a(
         quantized_image_shape=quantized_image_shape,
         verbose=True,
     )
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     vocab_size = train_dataset.vocab_size
 
