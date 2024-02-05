@@ -980,8 +980,10 @@ def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save
 
     # Prepend BOS token to the input
     BOS_TOKEN = vqvae.n_embeddings
-    fill_tensor = torch.full((train_data.shape[0], 1), BOS_TOKEN)
-    train_data = torch.cat((fill_tensor, train_data), dim=1)
+    train_fill_tensor = torch.full((train_data.shape[0], 1), BOS_TOKEN)
+    train_data = torch.cat((train_fill_tensor, train_data), dim=1)
+    test_fill_tensor = torch.full((test_data.shape[0], 1), BOS_TOKEN)
+    test_data = torch.cat((test_fill_tensor, test_data), dim=1)
 
     train_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_loader = data.DataLoader(test_data, batch_size=batch_size)
@@ -1212,12 +1214,12 @@ def main():
     )
 
     if question == 3:
-        if part == "a":
-            print(f"Q 3a ds {dataset}")
-            q3ab_save_results(dataset, "a", q3_a, generate=True, save=True)
+        if part == "a" or part == "b":
+            print(f"Q 3{part} ds {dataset}")
+            fn = q3_a if part == "a" else q3_b
+            q3ab_save_results(dataset, part, fn, generate=True, save=True)
             return
         elif part == "c":
-            print(f"Q 3b ds {dataset}")
             model = q3ab_save_results(dataset, "b", q3_b, generate=False, save=False)[
                 -1
             ]
