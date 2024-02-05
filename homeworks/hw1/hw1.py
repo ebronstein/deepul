@@ -546,7 +546,7 @@ class MultimodalDataset(data.Dataset):
             ]
             quantized_image = quantized_image - self.image_token_offset
             # Decode the image and remove the batch dimension
-            image = vqvae.decode(quantized_image)[0]
+            image = self.vqvae.decode(quantized_image)[0]
             text = " ".join(self.id_to_token[t] for t in text)
             decoded_samples.append((image, text))
 
