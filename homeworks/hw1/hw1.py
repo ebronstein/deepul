@@ -593,6 +593,7 @@ class MultimodalDataset(data.Dataset):
 
 def multimodal_sample(
     model,
+    train_dataset: MultimodalDataset,
     num_samples,
     seq_len,
     device,
@@ -603,28 +604,60 @@ def multimodal_sample(
     image_token_range,
     text_sequence_length,
     image_sequence_length,
+    image_test_prompt=None,
+    text_test_prompt=None,
     use_cache=True,
 ):
+    if image_test_prompt is not None and text_test_prompt is not None:
+        raise ValueError(
+            "Only one of image_test_prompt and text_test_prompt can be set."
+        )
+
     model.eval()
     if use_cache:
         model.clear_cache()
 
-    # Initialize samples with <bos> token
-    samples = torch.full(
-        (num_samples, 1), fill_value=bos_token, dtype=torch.long, device=device
-    )
+    if image_test_prompt is not None:
+        samples = []
+        for image in image_test_prompt:
+            samples.append(train_dataset.condition_on_image(image))
+        samples = torch.tensor(samples, dtype=torch.long, device=device)
+        # Initialize modality for each sample, True for text, False for image.
+        current_modality = torch.full(
+            (num_samples,), True, dtype=torch.bool, device=device
+        )
+    elif text_test_prompt is not None:
+        samples = []
+        for text in text_test_prompt:
+            samples.append(train_dataset.condition_on_text(text))
+        samples = torch.tensor(samples, dtype=torch.long, device=device)
+        # Initialize modality for each sample, True for text, False for image.
+        current_modality = torch.full(
+            (num_samples,), False, dtype=torch.bool, device=device
+        )
+    else:
+        # Initialize samples with <bos> token
+        samples = torch.full(
+            (num_samples, 1), fill_value=bos_token, dtype=torch.long, device=device
+        )
+        # Initialize modality for each sample, True for text, False for image.
+        # Set to True arbitrarily for step=0.
+        current_modality = torch.full(
+            (num_samples,), True, dtype=torch.bool, device=device
+        )
 
     # Tracks the number of tokens sampled for the current modality
     tokens_sampled_per_modality = torch.zeros(
         num_samples, dtype=torch.long, device=device
     )
 
-    # Initialize modality for each sample, True for text, False for image
-    current_modality = torch.full((num_samples,), True, dtype=torch.bool, device=device)
-
     time_list = []
 
-    for step in range(seq_len):
+    # Step start number. 0 for unconditioned samples, greater than 0 for
+    # conditioned samples.
+    start_step = samples.shape[1] - 1
+
+    for step in range(start_step, seq_len):
         start = time.time()
         # Get logits for the last token only
         # [num_samples, vocab_size, seq_len]
