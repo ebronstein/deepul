@@ -501,14 +501,36 @@ class MultimodalDataset(data.Dataset):
             self.token_to_id[word] = i
         self.id_to_token = {id: word for word, id in self.token_to_id.items()}
 
+    def encode_image(self, image):
+        quantized_image = self.vqvae.quantize(image[np.newaxis, ...]).flatten()
+        quantized_image += self.image_token_offset
+        return quantized_image
+
+    def condition_on_image(self, image):
+        image_tokens = self.encode_image(image)
+        return (
+            [self.bos_token, self.end_of_text_token]
+            + list(image_tokens)
+            + [self.end_of_image_token]
+        )
+
+    def encode_text(self, text):
+        return [self.token_to_id[word] for word in text.split()]
+
+    def condition_on_text(self, text):
+        return (
+            [self.bos_token, self.end_of_image_token]
+            + self.encode_text(text)
+            + [self.end_of_text_token]
+        )
+
     def preprocess_data(self):
         encoded_data = []
         for text, image in zip(self.text_data, self.image_data):
             # Tokenize text
-            text_tokens = [self.token_to_id[word] for word in text.split()]
+            text_tokens = self.encode_text(text)
             # Quantize image and adjust tokens
-            image_tokens = self.vqvae.quantize(image[np.newaxis, ...]).flatten()
-            image_tokens += self.image_token_offset
+            image_tokens = self.encode_image(image)
 
             # Combine text and image sequences
             sequence_ti = (
