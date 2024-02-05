@@ -159,6 +159,9 @@ class MultiHeadAttention(nn.Module):
     def clear_cache(self):
         self.cache = None
 
+    def is_cache_empty(self):
+        return self.cache is None
+
 
 class FeedForward(nn.Module):
     def __init__(self, d_model, d_ff=2048):
@@ -214,6 +217,9 @@ class TransformerBlock(nn.Module):
     def clear_cache(self):
         self.attention.clear_cache()
 
+    def is_cache_empty(self):
+        return self.attention.is_cache_empty()
+
 
 class Transformer(nn.Module):
     def __init__(self, seq_len, vocab_size, num_layers, d_model, num_heads, dropout):
@@ -234,7 +240,10 @@ class Transformer(nn.Module):
 
     def forward(self, x, use_cache=False):
         # x initially has shape [batch_size, seq_len]
-        if use_cache:
+        # Only pass the last token through the network if using cache and the
+        # cache is not empty for all of the transformer blocks. The cache may be
+        # empty if the model is being conditioned on a partial sequence.
+        if use_cache and not any(layer.is_cache_empty() for layer in self.layers):
             pos_encoding = self.pos_encoding.encoding_for_last_token(x)
             x = x[:, -1:]
         else:
@@ -1051,13 +1060,13 @@ def q6_a(
         model, train_loader, test_loader, epochs, lr, verbose=verbose
     )
 
-    # TODO
     if generate:
         if verbose:
             print("Sampling...")
         num_samples = 9
-        samples, _ = multimodal_sample(
+        samples_unconditioned, _ = multimodal_sample(
             model,
+            train_dataset,
             num_samples,
             # Subtract 1 to account for the <bos> token
             seq_len - 1,
@@ -1071,9 +1080,45 @@ def q6_a(
             train_dataset.image_sequence_length,
             use_cache=True,
         )
-        samples_unconditioned = train_dataset.decode(samples)
-        # TODO: generate conditioned samples properly
-        samples_text_conditioned = samples_image_conditioned = samples_unconditioned
+        samples_unconditioned = train_dataset.decode(samples_unconditioned)
+
+        samples_text_conditioned, _ = multimodal_sample(
+            model,
+            train_dataset,
+            num_samples,
+            # Subtract 1 to account for the <bos> token
+            seq_len - 1,
+            "cuda",
+            train_dataset.bos_token,
+            train_dataset.end_of_text_token,
+            train_dataset.end_of_image_token,
+            train_dataset.text_token_range,
+            train_dataset.image_token_range,
+            train_dataset.text_sequence_length,
+            train_dataset.image_sequence_length,
+            text_test_prompt=text_test_prompt,
+            use_cache=True,
+        )
+        samples_text_conditioned = train_dataset.decode(samples_text_conditioned)
+
+        samples_image_conditioned, _ = multimodal_sample(
+            model,
+            train_dataset,
+            num_samples,
+            # Subtract 1 to account for the <bos> token
+            seq_len - 1,
+            "cuda",
+            train_dataset.bos_token,
+            train_dataset.end_of_text_token,
+            train_dataset.end_of_image_token,
+            train_dataset.text_token_range,
+            train_dataset.image_token_range,
+            train_dataset.text_sequence_length,
+            train_dataset.image_sequence_length,
+            image_test_prompt=image_test_prompt,
+            use_cache=True,
+        )
+        samples_image_conditioned = train_dataset.decode(samples_image_conditioned)
     else:
         samples_image_conditioned = samples_text_conditioned = samples_unconditioned = (
             None
