@@ -718,8 +718,10 @@ def q3_a(train_data, test_data, image_shape, dset_id, generate=True):
 
     # Prepend BOS token to the input
     BOS_TOKEN = 2
-    fill_tensor = np.full((train_data.shape[0], 1), BOS_TOKEN)
-    train_data = np.concatenate((fill_tensor, train_data), axis=1)
+    train_fill_tensor = np.full((train_data.shape[0], 1), BOS_TOKEN)
+    train_data = np.concatenate((train_fill_tensor, train_data), axis=1)
+    test_fill_tensor = np.full((test_data.shape[0], 1), BOS_TOKEN)
+    test_data = np.concatenate((test_fill_tensor, test_data), axis=1)
 
     if dset_id == 1:
         batch_size = 16
@@ -805,8 +807,10 @@ def q3_b(train_data, test_data, image_shape, dset_id, generate=True):
 
     # Prepend BOS token to the input
     BOS_TOKEN = 64
-    fill_tensor = np.full((train_data.shape[0], 1), BOS_TOKEN)
-    train_data = np.concatenate((fill_tensor, train_data), axis=1)
+    train_fill_tensor = np.full((train_data.shape[0], 1), BOS_TOKEN)
+    train_data = np.concatenate((train_fill_tensor, train_data), axis=1)
+    test_fill_tensor = np.full((test_data.shape[0], 1), BOS_TOKEN)
+    test_data = np.concatenate((test_fill_tensor, test_data), axis=1)
 
     train_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_loader = data.DataLoader(test_data, batch_size=batch_size)
@@ -1175,7 +1179,11 @@ def main():
     )
 
     if question == 3:
-        if part == "c":
+        if part == "a":
+            print(f"Q 3a ds {dataset}")
+            q3ab_save_results(dataset, "a", q3_a, generate=True, save=True)
+            return
+        elif part == "c":
             print(f"Q 3b ds {dataset}")
             model = q3ab_save_results(dataset, "b", q3_b, generate=False, save=False)[
                 -1
