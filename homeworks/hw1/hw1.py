@@ -385,7 +385,7 @@ class ColoredImageTokenizer:
 
 
 class CharTokenizedTextDataset(data.Dataset):
-    def __init__(self, data, context_length=128):
+    def __init__(self, data, context_length=128, token_to_id=None, id_to_token=None):
         self.bos_id = 0
         self.eos_id = 1
         self.token_to_id = {"<bos>": self.bos_id, "<eos>": self.eos_id}
@@ -393,7 +393,12 @@ class CharTokenizedTextDataset(data.Dataset):
         self.context_length = context_length
         self.encoded_data = []
 
-        self.build_vocabulary(data)
+        if token_to_id is not None and id_to_token is not None:
+            self.token_to_id = token_to_id
+            self.id_to_token = id_to_token
+        else:
+            self.build_vocabulary(data)
+
         self.tokenize_data(data)
 
     @property
@@ -402,7 +407,7 @@ class CharTokenizedTextDataset(data.Dataset):
 
     def build_vocabulary(self, data):
         unique_chars = set(char for sequence in data for char in sequence)
-        for i, char in enumerate(unique_chars, start=2):
+        for i, char in enumerate(sorted(unique_chars), start=2):
             self.token_to_id[char] = i
             self.id_to_token[i] = char
 
@@ -1020,6 +1025,80 @@ def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save
     return train_losses, test_losses, samples, model
 
 
+def q5_a(train_text, test_text, generate=True):
+    """
+    train_text: list[str] Train text sequences.
+    test_text: list[str] Test text sequences.
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a list of 5 (str), 5 generated samples from the model.
+    """
+    batch_size = 64
+    context_length = 128
+    epochs = 30
+    lr = 1e-3
+    num_layers = 4
+    d_model = 128
+    num_heads = 4
+    dropout = 0.0
+    verbose = True
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    # Set to None to use the full dataset
+    max_num_train_examples = None
+    if max_num_train_examples is not None:
+        train_text = train_text[:max_num_train_examples]
+
+    # Make dataloaders
+    train_dataset = CharTokenizedTextDataset(train_text, context_length=context_length)
+    train_loader = data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_dataset = CharTokenizedTextDataset(
+        test_text,
+        context_length=context_length,
+        token_to_id=train_dataset.token_to_id,
+        id_to_token=train_dataset.id_to_token,
+    )
+    test_loader = data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    vocab_size = train_dataset.vocab_size
+
+    model = Transformer(
+        context_length, vocab_size, num_layers, d_model, num_heads, dropout
+    ).cuda()
+
+    if verbose:
+        print("Training...")
+    train_losses, test_losses = train_transformer(
+        model, train_loader, test_loader, epochs, lr, verbose=verbose
+    )
+
+    if verbose:
+        print("Sampling...")
+
+    if generate:
+        num_samples = 5
+        samples, _ = sample(
+            model,
+            num_samples,
+            # Subtract 1 to account for the <bos> token
+            context_length - 1,
+            "cuda",
+            train_dataset.bos_id,
+            use_cache=True,
+        )
+        text_samples = [
+            train_dataset.decode(sequence, remove_eos=True) for sequence in samples
+        ]
+    else:
+        text_samples = None
+
+    return train_losses, test_losses, text_samples, model
+
+
 def q6_a(
     train_data,
     test_data,
@@ -1230,6 +1309,11 @@ def main():
         if part == "b":
             print(f"Q 4b ds {dataset}")
             q4b_save_results(dataset, q4_b)
+            return
+    elif question == 5:
+        if part == "a":
+            print("Q 5a")
+            q5a_save_results(q5_a)
             return
     elif question == 6:
         if part == "a":
