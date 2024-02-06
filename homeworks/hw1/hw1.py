@@ -3,6 +3,7 @@ import itertools
 import os
 import time
 from collections import Counter
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,6 +32,424 @@ from deepul.hw1_helper import (  # Q1; Q2; Q3; Q4; Q5; Q6
     visualize_q5_data,
     visualize_q6_data,
 )
+
+
+def eval(model, dataloader, device="cuda"):
+    model = model.to(device)
+    model.eval()
+
+    total_loss = 0
+    for batch in dataloader:
+        batch = batch.to(device)
+        loss = model.loss(batch)
+        total_loss += loss.item() * batch.shape[0]
+
+    return total_loss / len(dataloader.dataset)
+
+
+def train(
+    model,
+    train_dataloader,
+    test_dataloader,
+    epochs,
+    learning_rate,
+    device="cuda",
+    verbose=False,
+):
+    model = model.to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    train_losses = []
+    test_losses = []
+    test_losses.append(eval(model, test_dataloader, device))
+
+    for epoch in range(epochs):
+        model.train()
+        epoch_losses = []
+        for batch in train_dataloader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
+            loss = model.loss(batch)
+            loss.backward()
+            optimizer.step()
+
+            epoch_losses.append(loss.item())
+
+        train_losses.extend(epoch_losses)
+        test_losses.append(eval(model, test_dataloader, device))
+
+        if (epoch + 1) % 10 == 0 and verbose:
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item()}")
+
+    return train_losses, test_losses
+
+
+def sweep(model, get_data_fn, epochs_list, lrs, batch_sizes, verbose=False):
+    hparams_to_loss = {}
+
+    train_data, test_data = get_data_fn()
+
+    for lr, batch_size, epochs in itertools.product(lrs, batch_sizes, epochs_list):
+        print(f"Training with lr={lr}, batch_size={batch_size}, epochs={epochs}")
+
+        train_dataloader = data.DataLoader(
+            train_data, batch_size=batch_size, shuffle=True
+        )
+        test_dataloader = data.DataLoader(
+            test_data, batch_size=batch_size, shuffle=True
+        )
+
+        train_losses, test_losses = train(
+            model, train_dataloader, test_dataloader, epochs, lr, verbose=verbose
+        )
+        last_train_loss = train_losses[-1]
+        last_test_loss = test_losses[-1]
+        hparams_to_loss[(lr, batch_size, epochs)] = (last_train_loss, last_test_loss)
+
+    return hparams_to_loss
+
+
+class Histogram(nn.Module):
+    def __init__(self, d=30):
+        super().__init__()
+        self.d = d
+        self.logits = nn.Parameter(torch.zeros(d))
+
+    def loss(self, x):
+        # Shape: [batch_size, d]
+        logits = self.logits.unsqueeze(0).repeat(x.shape[0], 1)
+        return F.cross_entropy(logits, x.long())
+
+    def probabilities(self):
+        return F.softmax(self.logits, dim=-1)
+
+
+class MixtureOfLogistics(nn.Module):
+    def __init__(self, d, num_mix=4):
+        super().__init__()
+        self.d = d
+        self.num_mix = num_mix
+
+        # pi_i
+        self.logits = nn.Parameter(torch.zeros(num_mix))
+        # mu_i
+        self.means = nn.Parameter(
+            torch.arange(num_mix, dtype=torch.float32) / (num_mix - 1) * d
+        )
+        # Log of scale s_i
+        # self.log_scales = nn.Parameter(torch.randn(num_mix))
+        self.log_scales = nn.Parameter(torch.zeros(num_mix))
+
+        # Tolerance for log probability near 0 and d - 1.
+        self._log_prob_tol = 1e-3
+        # Min value for CDF for numerical stability when taking the log.
+        self._cdf_min = 1e-12
+
+    def forward(self, x):
+        x = x.float()
+        # [batch_size, num_mix]
+        x = x.unsqueeze(1).repeat(1, self.num_mix)
+        # [1, num_mix]
+        means, log_scales = self.means.unsqueeze(0), self.log_scales.unsqueeze(0)
+        log_scales = torch.clamp(log_scales, min=-10.0)
+        # 1 / s_i
+        inv_scales = torch.exp(-log_scales)
+
+        # CDF of logistics at x + 0.5
+        sigmoid_top = torch.sigmoid(inv_scales * (x + 0.5 - means))
+        # CDF of logistics at x - 0.5
+        sigmoid_bottom = torch.sigmoid(inv_scales * (x - 0.5 - means))
+        cdf_delta = sigmoid_top - sigmoid_bottom
+        # Log CDF
+        log_cdf_delta = torch.log(torch.clamp(cdf_delta, min=self._cdf_min))
+
+        # Log CDF for x = 0
+        log_cdf_max = torch.log(
+            torch.clamp(torch.sigmoid(inv_scales * (0.5 - means)), min=self._cdf_min)
+        )
+        # Log CDF for x = d - 1 = 99
+        log_cdf_min = torch.log(
+            torch.clamp(
+                1 - torch.sigmoid(inv_scales * (self.d - 1 - 0.5 - means)),
+                min=self._cdf_min,
+            )
+        )
+        # Replace x = d - 1 with log CDF for x = d - 1
+        x_log_probs = torch.where(
+            x > self.d - 1 - self._log_prob_tol, log_cdf_min, log_cdf_delta
+        )
+        # Replace x = 0 with log CDF for x = 0
+        x_log_probs = torch.where(x < self._log_prob_tol, log_cdf_max, x_log_probs)
+        pi_log_probs = F.log_softmax(self.logits, dim=0).unsqueeze(0)
+        log_probs = x_log_probs + pi_log_probs
+        return torch.logsumexp(log_probs, dim=1)
+
+    def loss(self, x):
+        # The forward pass on x returns log probabilities, so we take the mean
+        # and negate it to get negative log likelihood loss.
+        return -torch.mean(self(x))
+
+    def probabilities(self):
+        with torch.no_grad():
+            bins = torch.arange(self.d, dtype=torch.float32, device=self.logits.device)
+            return torch.exp(self(bins))
+
+
+MaskType = Literal["A", "B"]
+
+
+class MaskConv2d(nn.Conv2d):
+    def __init__(
+        self,
+        mask_type: MaskType,
+        *args,
+        color_conditioning=False,
+        **kwargs,
+    ):
+        """2D Convolution with masked weight for AutoRegressive connection.
+
+        Args:
+            mask_type: Either "A" or "B". Determines which weights of the filter
+                are used in the convolution.
+            *args: Forwarded to `nn.Conv2d`.
+            color_conditioning: Whether to use color conditioning or not.
+            **kwargs: Forwarded to `nn.Conv2d`.
+        """
+        if mask_type not in ["A", "B"]:
+            raise ValueError(f'Invalid mask type "{mask_type}"')
+
+        super().__init__(*args, **kwargs)
+
+        self.color_conditioning = color_conditioning
+
+        # Make the mask a buffer since it's not a trainable parameter.
+        # Shape: [out_channels, in_channels, kernel_size[0], kernel_size[1]
+        self.register_buffer("mask", torch.zeros_like(self.weight))
+        self._create_mask(mask_type)
+
+    def forward(self, x):
+        return F.conv2d(
+            x,
+            self.weight * self.mask,  # Apply the mask to the weights.
+            self.bias,
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.groups,
+        )
+
+    def _create_mask(self, mask_type):
+        k = self.kernel_size[0]
+        # Only allow (context) connections to pixels above and to the right.
+        self.mask[:, :, : k // 2] = 1
+        self.mask[:, :, k // 2, : k // 2] = 1
+
+        if self.color_conditioning:
+            if self.in_channels % 3 != 0:
+                raise ValueError(
+                    "Color conditioning can only be used when input has 3 channels."
+                )
+            if self.out_channels % 3 != 0:
+                raise ValueError(
+                    "Color conditioning can only be used when output has 3 channels."
+                )
+
+            one_third_in = self.in_channels // 3
+            one_third_out = self.out_channels // 3
+            if mask_type == "B":
+                # Allow connection from the red channel to the red channel.
+                self.mask[:one_third_out, :one_third_in, k // 2, k // 2] = 1
+                # Allow connection from the green channel to the red and green
+                # channels.
+                self.mask[
+                    one_third_out : 2 * one_third_out,
+                    : 2 * one_third_in,
+                    k // 2,
+                    k // 2,
+                ] = 1
+                # Allow connection from the blue channel to the red, green, and
+                # blue channels.
+                self.mask[2 * one_third_out :, :, k // 2, k // 2] = 1
+            else:
+                # Allow connection from the green channel to the red channel.
+                self.mask[
+                    one_third_out : 2 * one_third_out, :one_third_in, k // 2, k // 2
+                ] = 1
+                # Alllow connection from the blue channel to the red and green
+                # channels.
+                self.mask[2 * one_third_out :, : 2 * one_third_in, k // 2, k // 2] = 1
+        else:
+            if mask_type == "B":
+                # Allow connection from a channel to itself.
+                self.mask[:, :, k // 2, k // 2] = 1
+
+
+class ResBlock(nn.Module):
+    def __init__(self, in_channels, **kwargs):
+        super().__init__()
+        self.block = nn.ModuleList(
+            [
+                nn.ReLU(),
+                MaskConv2d("B", in_channels, in_channels // 2, 1, **kwargs),
+                nn.ReLU(),
+                # Use 7x7 convolution instead of 3x3 convolution (as in the original paper).
+                MaskConv2d(
+                    "B", in_channels // 2, in_channels // 2, 7, padding=3, **kwargs
+                ),
+                nn.ReLU(),
+                MaskConv2d("B", in_channels // 2, in_channels, 1, **kwargs),
+            ]
+        )
+
+    def forward(self, x):
+        out = x
+        for layer in self.block:
+            out = layer(out)
+        return out + x
+
+
+class LayerNorm(nn.LayerNorm):
+    def __init__(self, color_conditioning, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.color_conditioning = color_conditioning
+
+    def forward(self, x):
+        x = x.permute(0, 2, 3, 1).contiguous()
+        x_shape = x.shape
+        if self.color_conditioning:
+            x = x.contiguous().view(*(x_shape[:-1] + (3, -1)))
+        x = super().forward(x)
+        if self.color_conditioning:
+            x = x.view(*x_shape)
+        return x.permute(0, 3, 1, 2).contiguous()
+
+
+class PixelCNN(nn.Module):
+    def __init__(
+        self,
+        shape,
+        num_colors,
+        num_filters=64,
+        kernel_size=7,
+        num_layers=5,
+        use_resblock=False,
+        color_conditioning=False,
+    ):
+        """Initialize PixelCNN model.
+
+        Args:
+            shape: Shape of the input data in the order [num_channels, height, width].
+            num_colors: Number of color categories in each channel. This is the
+                number of colors that the dataset is quantized into. For example,
+                if num_colors=4, then there are 4 colors and 2 bits per channel.
+            num_filters: Number of convolutional filters.
+            kernel_size: Kernel size for initial convolutional layers.
+            num_layers: Number of masked type B convolutional layers.
+            use_resblock: Whether to use ResBlocks instead of MaskedConv2d.
+            color_conditioning: Whether to use color conditioning or not.
+        """
+        super().__init__()
+
+        self.shape = shape
+        self.num_colors = num_colors
+        self.num_channels = shape[0]
+        self.color_conditioning = color_conditioning
+
+        if use_resblock:
+            block_init = lambda: ResBlock(
+                num_filters, color_conditioning=color_conditioning
+            )
+        else:
+            block_init = lambda: MaskConv2d(
+                "B",
+                num_filters,
+                num_filters,
+                kernel_size=kernel_size,
+                padding=kernel_size // 2,
+                color_conditioning=color_conditioning,
+            )
+
+        model = nn.ModuleList(
+            [
+                MaskConv2d(
+                    "A",
+                    self.num_channels,
+                    num_filters,
+                    kernel_size=kernel_size,
+                    padding=kernel_size // 2,
+                    color_conditioning=color_conditioning,
+                )
+            ]
+        )
+        for _ in range(num_layers):
+            if color_conditioning:
+                model.append(LayerNorm(color_conditioning, num_filters // 3))
+            else:
+                model.append(LayerNorm(color_conditioning, num_filters))
+            model.extend([nn.ReLU(), block_init()])
+        model.extend(
+            [
+                nn.ReLU(),
+                MaskConv2d(
+                    "B",
+                    num_filters,
+                    num_filters,
+                    1,
+                    color_conditioning=color_conditioning,
+                ),
+            ]
+        )
+        model.extend(
+            [
+                nn.ReLU(),
+                MaskConv2d(
+                    "B",
+                    num_filters,
+                    num_colors * self.num_channels,
+                    1,
+                    color_conditioning=color_conditioning,
+                ),
+            ]
+        )
+
+        self.net = model
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        out = (x.float() / (self.num_colors - 1) - 0.5) / 0.5
+        for layer in self.net:
+            out = layer(out)
+
+        if self.color_conditioning:
+            # Shape: [batch_size, num_colors, num_channels, height, width]
+            return out.view(
+                batch_size, self.num_channels, self.num_colors, *self.shape[1:]
+            ).permute(0, 2, 1, 3, 4)
+        else:
+            # Shape: [batch_size, num_colors, height, width]
+            return out.view(batch_size, self.num_colors, *self.shape)
+
+    def loss(self, x):
+        return F.cross_entropy(self(x), x.long())
+
+    def sample(self, n):
+        """Samples `n` images from the model.
+        Args:
+            n: Number of images to sample.
+
+        Returns:
+            Samples of shape [n, height, width, num_channels].
+        """
+        # Shape: [n, num_channels, height, width]
+        samples = torch.zeros(n, *self.shape).cuda()
+        with torch.no_grad():
+            for r in range(self.shape[1]):
+                for c in range(self.shape[2]):
+                    for k in range(self.num_channels):
+                        logits = self(samples)[:, :, k, r, c]
+                        probs = F.softmax(logits, dim=1)
+                        samples[:, k, r, c] = torch.multinomial(probs, 1).squeeze(-1)
+        return samples.permute(0, 2, 3, 1).cpu().numpy()
 
 
 class MultiHeadAttention(nn.Module):
@@ -68,44 +487,6 @@ class MultiHeadAttention(nn.Module):
         # Shape: [batch_size, seq_len, num_heads, depth]
         x = x.view(batch_size, -1, self.num_heads, self.depth)
         return x.permute(0, 2, 1, 3)
-
-    # def forward(self, q, k, v, use_cache=False):
-    #     """Apply forward pass.
-
-    #     Args:
-    #         q: Query tensor of shape (batch_size, seq_len, d_model)
-    #         k: Key tensor of shape (batch_size, seq_len, d_model)
-    #         v: Value tensor of shape (batch_size, seq_len, d_model)
-    #         mask: Mask tensor of shape (batch_size, seq_len).
-    #             0 means valid position, 1 means masked position.
-    #     """
-    #     batch_size = q.size(0)
-
-    #     if use_cache and self.cache is not None:
-    #         cache_k = self.cache["k"]
-    #         cache_v = self.cache["v"]
-
-    #     q = self.split_heads(self.wq(q), batch_size)
-    #     k = self.split_heads(self.wk(k), batch_size)
-    #     v = self.split_heads(self.wv(v), batch_size)
-
-    #     scaled_attention_logits = (
-    #         torch.matmul(q, k.transpose(-2, -1)) / self.depth**0.5
-    #     )
-
-    #     # Apply mask to the scaled attention logits
-    #     seq_len = q.size(2)
-    #     scaled_attention_logits += self.mask[:seq_len, :seq_len]
-
-    #     attention_weights = F.softmax(scaled_attention_logits, dim=-1)
-
-    #     output = torch.matmul(attention_weights, v)
-    #     # Concatenate the output of all heads
-    #     output = (
-    #         output.permute(0, 2, 1, 3).contiguous().view(batch_size, -1, self.d_model)
-    #     )
-
-    #     return self.dense(output)
 
     def forward(self, q, k, v, use_cache=False):
         """Apply forward pass.
@@ -269,7 +650,6 @@ def train_transformer(
     test_dataloader,
     epochs,
     lr,
-    # warmup_steps,
     device="cuda",
     verbose=False,
 ):
@@ -744,6 +1124,141 @@ def multimodal_sample(
     return np.asarray(samples.cpu()), time_list
 
 
+def q1_a(train_data, test_data, d, dset_id):
+    """
+    train_data: An (n_train,) numpy array of integers in {0, ..., d-1}
+    test_data: An (n_test,) numpy array of integers in {0, .., d-1}
+    d: The number of possible discrete values for random variable x
+    dset_id: An identifying number of which dataset is given (1 or 2). Most likely
+               used to set different hyperparameters for different datasets
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a numpy array of size (d,) of model probabilities
+    """
+    if dset_id == 1:
+        learning_rate = 0.1
+        batch_size = 64
+        epochs = 100
+    elif dset_id == 2:
+        learning_rate = 0.1
+        batch_size = 128
+        epochs = 20
+
+    verbose = False
+
+    train_dataloader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_dataloader = data.DataLoader(test_data, batch_size=batch_size, shuffle=True)
+
+    model = Histogram(d)
+
+    train_losses, test_losses = train(
+        model, train_dataloader, test_dataloader, epochs, learning_rate, verbose=verbose
+    )
+    distribution = model.probabilities().detach().cpu().numpy()
+
+    return train_losses, test_losses, distribution
+
+
+def q1_b(train_data, test_data, d, dset_id):
+    """
+    train_data: An (n_train,) numpy array of integers in {0, ..., d-1}
+    test_data: An (n_test,) numpy array of integers in {0, .., d-1}
+    d: The number of possible discrete values for random variable x
+    dset_id: An identifying number of which dataset is given (1 or 2). Most likely
+             used to set different hyperparameters for different datasets
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a numpy array of size (d,) of model probabilities
+    """
+    if dset_id == 1:
+        batch_size = 256
+        epochs = 40
+        lr = 1e-1
+    elif dset_id == 2:
+        batch_size = 8000
+        epochs = 1000
+        lr = 1e-1
+
+    model = MixtureOfLogistics(d, num_mix=4).cuda()
+    train_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_loader = data.DataLoader(test_data, batch_size=batch_size)
+    train_losses, test_losses = train(
+        model, train_loader, test_loader, epochs, lr, verbose=True
+    )
+    distribution = model.probabilities().detach().cpu().numpy()
+
+    return train_losses, test_losses, distribution
+
+
+def q2_a(train_data, test_data, image_shape, dset_id):
+    """
+    train_data: A (n_train, H, W, 1) uint8 numpy array of binary images with values in {0, 1}
+    test_data: A (n_test, H, W, 1) uint8 numpy array of binary images with values in {0, 1}
+    image_shape: (H, W), height and width of the image
+    dset_id: An identifying number of which dataset is given (1 or 2). Most likely
+             used to set different hyperparameters for different datasets
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a numpy array of size (100, H, W, 1) of samples with values in {0, 1}
+    """
+    train_data = np.transpose(train_data, (0, 3, 1, 2))
+    test_data = np.transpose(test_data, (0, 3, 1, 2))
+
+    H, W = image_shape
+    model = PixelCNN((1, H, W), 2, num_layers=5).cuda()
+
+    train_loader = data.DataLoader(train_data, batch_size=128, shuffle=True)
+    test_loader = data.DataLoader(test_data, batch_size=128)
+    train_losses, test_losses = train(model, train_loader, test_loader, 10, 1e-3)
+    samples, _ = model.sample(100)
+    return train_losses, test_losses, samples
+
+
+def q2_b(train_data, test_data, image_shape, dset_id):
+    """
+    train_data: A (n_train, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    test_data: A (n_test, H, W, C) uint8 numpy array of color images with values in {0, 1, 2, 3}
+    image_shape: (H, W, C), height, width, and # of channels of the image
+    dset_id: An identifying number of which dataset is given (1 or 2). Most likely
+             used to set different hyperparameters for different datasets
+
+    Returns
+    - a (# of training iterations,) numpy array of train_losses evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of test_losses evaluated once at initialization and after each epoch
+    - a numpy array of size (100, H, W, C) of samples with values in {0, 1, 2, 3}
+    """
+    # Reshape to [batch_size, C, H, W] for PixelCNN/Conv2D compatibility.
+    train_data = np.transpose(train_data, (0, 3, 1, 2))
+    test_data = np.transpose(test_data, (0, 3, 1, 2))
+
+    H, W, C = image_shape
+    num_colors = 4
+    epochs = 15
+    lr = 1e-3
+    num_filters = 120
+    num_layers = 8
+    batch_size = 128
+    model = PixelCNN(
+        (C, H, W),
+        num_colors,
+        num_filters=num_filters,
+        num_layers=num_layers,
+        use_resblock=True,
+    ).cuda()
+
+    train_loader = data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_loader = data.DataLoader(test_data, batch_size=batch_size)
+    train_losses, test_losses = train(model, train_loader, test_loader, epochs, lr)
+    samples, _ = model.sample(100)
+    return train_losses, test_losses, samples
+
+
 def q3_a(train_data, test_data, image_shape, dset_id, generate=True):
     """
     train_data: A (n_train, H, W, 1) uint8 numpy array of color images with values in {0, 1, 2, 3}
@@ -936,6 +1451,19 @@ def q3_c(model, train_data, test_data, image_shape, dset_id):
         samples_no_cache,
         samples_with_cache,
     )
+
+
+def q4_a(images, vqvae):
+    """
+    images: (B, H, W, C), the images to pass through the encoder and decoder of the vqvae
+    vqvae: a vqvae model, trained on the relevant dataset
+
+    Returns
+    - a numpy array of size (2, H, W, C) of the decoded image
+    """
+    encoded_images = vqvae.quantize(images)
+    autoencoded_images = vqvae.decode(encoded_images)
+    return autoencoded_images
 
 
 def q4_b(train_data, test_data, image_shape, dset_id, vqvae, generate=True, save=True):
@@ -1306,7 +1834,22 @@ def main():
         f"Dataset: {args.dataset or 'None'}, Question: {args.question}, Part: {args.part}"
     )
 
-    if question == 3:
+    if question == 1:
+        if part == "a" or part == "b":
+            print(f"Q 1{part} ds {dataset}")
+            fn = q1_a if part == "a" else q1_b
+            q1_save_results(dataset, part, fn)
+            return
+    elif question == 2:
+        if part == "a":
+            print(f"Q 2a ds {dataset}")
+            q2a_save_results(dataset, q2_a)
+            return
+        elif part == "b":
+            print(f"Q 2b ds {dataset}")
+            q2b_save_results(dataset, part, q2_b)
+            return
+    elif question == 3:
         if part == "a" or part == "b":
             print(f"Q 3{part} ds {dataset}")
             fn = q3_a if part == "a" else q3_b
@@ -1320,6 +1863,10 @@ def main():
             q3c_save_results(dataset, q3_c, model)
             return
     elif question == 4:
+        if part == "a":
+            print(f"Q 4a ds {dataset}")
+            q4a_save_results(dataset, q4_a)
+            return
         if part == "b":
             print(f"Q 4b ds {dataset}")
             q4b_save_results(dataset, q4_b)
