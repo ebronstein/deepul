@@ -445,7 +445,14 @@ class CharTokenizedTextDataset(data.Dataset):
 
 class MultimodalDataset(data.Dataset):
     def __init__(
-        self, text_data, image_data, vqvae, quantized_image_shape, verbose=False
+        self,
+        text_data,
+        image_data,
+        vqvae,
+        quantized_image_shape,
+        token_to_id=None,
+        id_to_token=None,
+        verbose=False,
     ):
         self.bos_token = 0
         self.bos_str = "<bos>"
@@ -465,10 +472,15 @@ class MultimodalDataset(data.Dataset):
         self.text_sequence_length = len(self.text_data[0].split())
         self.compute_sequence_length()
 
-        # Build vocabulary for text
-        if verbose:
-            print("Building text vocabulary...")
-        self.build_text_vocabulary()
+        if token_to_id is not None and id_to_token is not None:
+            self.token_to_id = token_to_id
+            self.id_to_token = id_to_token
+        else:
+            # Build vocabulary for text
+            if verbose:
+                print("Building text vocabulary...")
+            self.build_text_vocabulary()
+
         # Adjust image token IDs to not overlap with special and text tokens
         self.image_token_offset = 2 + len(self.token_to_id) + 1
 
@@ -1161,6 +1173,8 @@ def q6_a(
         test_data,
         vqvae,
         quantized_image_shape=quantized_image_shape,
+        token_to_id=train_dataset.token_to_id,
+        id_to_token=train_dataset.id_to_token,
         verbose=True,
     )
     test_loader = data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
