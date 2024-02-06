@@ -3,6 +3,8 @@
 *.egg-info
 *__pycache__
 *.pkl
+*.log
+*.pdf
 
 *.pth
 
