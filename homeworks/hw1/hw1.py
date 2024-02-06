@@ -1049,7 +1049,7 @@ def q5_a(train_text, test_text, generate=True):
     """
     batch_size = 64
     context_length = 128
-    epochs = 30
+    epochs = 15
     lr = 1e-3
     num_layers = 4
     d_model = 128
@@ -1140,7 +1140,7 @@ def q6_a(
     - a list of 9 (image, text), corresponding to unconditional samples
     """
     batch_size = 64
-    epochs = 30
+    epochs = 15
     lr = 1e-3
     num_layers = 4
     d_model = 128
