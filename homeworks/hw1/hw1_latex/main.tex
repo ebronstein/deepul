@@ -47,6 +47,10 @@ Student ID: 26086997
 
 \vspace{.2in}
 
+{\bf Note}: My submission includes this PDF with all the figures and test losses, the iPython notebook I primarily used for prototyping and experimentation, and the \texttt{hw1.py} script, which I ran to get final results for most of the questions (mostly question 3 onwards). The notebook has some of the final figures and test losses, while the rest were produced by running the Python script.
+
+\vspace{.2in}
+
 %--------------------------------------------------------------------------------
 %--------------------------------------------------------------------------------
 %--------------------------------------------------------------------------------
@@ -213,7 +217,7 @@ Final test loss for dataset 2: 0.0892  nats / dim
 
 \begin{enumerate}[(a)]
 \item {\bf [15pt] Autoregressive Transformer on Shapes and MNIST} \\\\
-Final test loss for dataset 1: \textcolor{red}{TODO: update this. Should be around 0.0397.}  nats / dim
+Final test loss for dataset 1: 0.0337  nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -228,8 +232,7 @@ Final test loss for dataset 1: \textcolor{red}{TODO: update this. Should be arou
         \caption{Dataset 1: Samples}
     \end{subfigure}
 \end{figure}
-% Source: slurm/igpt.125671.out
-Final test loss for dataset 2: 0.0881  nats / dim
+Final test loss for dataset 2: 0.0741  nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -248,7 +251,7 @@ Final test loss for dataset 2: 0.0881  nats / dim
 \newpage
 
 \item {\bf [15pt] Autoregressive Transformer on Colored Shapes and MNIST} \\\\
-Final test loss for dataset 1: \textcolor{red}{TODO: update this. Should be around 0.0541} nats / dim
+Final test loss for dataset 1: 0.0503 nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -263,7 +266,7 @@ Final test loss for dataset 1: \textcolor{red}{TODO: update this. Should be arou
         \caption{Dataset 1: Samples}
     \end{subfigure}
 \end{figure}
-Final test loss for dataset 2: \textcolor{red}{FILL IN HERE}  nats / dim
+Final test loss for dataset 2: 0.0918  nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -331,7 +334,7 @@ Final test loss for dataset 2: \textcolor{red}{FILL IN HERE}  nats / dim
 \end{figure}
 
 \item {\bf [15pt] Autoregressive Transformer on Colored Shapes and MNIST with Vector Quantization} \\\\
-Final test loss for dataset 1: \textcolor{red}{Update this. Should be around 3.083} nats / dim
+Final test loss for dataset 1: 2.9278 nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -346,7 +349,7 @@ Final test loss for dataset 1: \textcolor{red}{Update this. Should be around 3.0
         \caption{Dataset 1: Samples}
     \end{subfigure}
 \end{figure}
-Final test loss for dataset 2: \textcolor{red}{FILL IN HERE}  nats / dim
+Final test loss for dataset 2: 2.9000 nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -375,7 +378,7 @@ Final test loss for dataset 2: \textcolor{red}{FILL IN HERE}  nats / dim
 
 \begin{enumerate}[(a)]
 \item {\bf [20pt] Modeling Text} \\\\
-Final test loss: \textcolor{red}{FILL IN HERE}  nats / dim
+Final test loss: 1.8461 nats / dim
 \begin{figure}[H]
     \centering
 \end{figure}
@@ -412,7 +415,7 @@ Final test loss: \textcolor{red}{FILL IN HERE}  nats / dim
 
 \begin{enumerate}[(a)]
 \item {\bf [20pt] Multimodal Text and Image Generation} \\\\
-Final test loss: \textcolor{red}{FILL IN HERE}  nats / dim
+Final test loss: 2.5597 nats / dim
 \begin{figure}[H]
     \centering
     \begin{subfigure}{0.45\textwidth}
@@ -421,16 +424,16 @@ Final test loss: \textcolor{red}{FILL IN HERE}  nats / dim
         \caption{Training curve}
     \end{subfigure}
     \hspace{0.2in}
-    % \begin{subfigure}{0.45\textwidth}
-    %     \centering
-    %     \includegraphics[width=\textwidth]{figures/q6_a_samples_img_conditioned.png}
-    %     \caption{Image conditioned samples}
-    % \end{subfigure} \\
-    % \begin{subfigure}{0.45\textwidth}
-    %     \centering
-    %     \includegraphics[width=\textwidth]{figures/q6_a_samples_text_conditioned.png}
-    %     \caption{Text conditioned samples}
-    % \end{subfigure}
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/q6_a_samples_img_conditioned.png}
+        \caption{Image conditioned samples}
+    \end{subfigure} \\
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/q6_a_samples_text_conditioned.png}
+        \caption{Text conditioned samples}
+    \end{subfigure}
     \hspace{0.2in}
     \begin{subfigure}{0.45\textwidth}
         \centering

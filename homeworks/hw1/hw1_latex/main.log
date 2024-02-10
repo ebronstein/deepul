@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2023.9.27)  5 FEB 2024 10:49
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2023.9.27)  6 FEB 2024 10:03
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -327,280 +327,290 @@ Package caption Info: End \AtBeginDocument code.
 <figures/q1_a_dset1_train_plot.png, id=4, 462.528pt x 346.896pt>
 File: figures/q1_a_dset1_train_plot.png Graphic file (type png)
 <use figures/q1_a_dset1_train_plot.png>
-Package pdftex.def Info: figures/q1_a_dset1_train_plot.png  used on input line 66.
+Package pdftex.def Info: figures/q1_a_dset1_train_plot.png  used on input line 70.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 <figures/q1_a_dset1_learned_dist.png, id=6, 462.528pt x 346.896pt>
 File: figures/q1_a_dset1_learned_dist.png Graphic file (type png)
 <use figures/q1_a_dset1_learned_dist.png>
-Package pdftex.def Info: figures/q1_a_dset1_learned_dist.png  used on input line 72.
+Package pdftex.def Info: figures/q1_a_dset1_learned_dist.png  used on input line 76.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 60--75
+Underfull \hbox (badness 10000) in paragraph at lines 64--79
 
  []
 
 <figures/q1_a_dset2_train_plot.png, id=7, 462.528pt x 346.896pt>
 File: figures/q1_a_dset2_train_plot.png Graphic file (type png)
 <use figures/q1_a_dset2_train_plot.png>
-Package pdftex.def Info: figures/q1_a_dset2_train_plot.png  used on input line 81.
+Package pdftex.def Info: figures/q1_a_dset2_train_plot.png  used on input line 85.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 <figures/q1_a_dset2_learned_dist.png, id=8, 462.528pt x 346.896pt>
 File: figures/q1_a_dset2_learned_dist.png Graphic file (type png)
 <use figures/q1_a_dset2_learned_dist.png>
-Package pdftex.def Info: figures/q1_a_dset2_learned_dist.png  used on input line 87.
+Package pdftex.def Info: figures/q1_a_dset2_learned_dist.png  used on input line 91.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [1{/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map}
 
  <./figures/q1_a_dset1_train_plot.png> <./figures/q1_a_dset1_learned_dist.png>] [2 <./figures/q1_a_dset2_train_plot.png> <./figures/q1_a_dset2_learned_dist.png>]
-<figures/q1_b_dset1_train_plot.png, id=30, 462.528pt x 346.896pt>
+<figures/q1_b_dset1_train_plot.png, id=31, 462.528pt x 346.896pt>
 File: figures/q1_b_dset1_train_plot.png Graphic file (type png)
 <use figures/q1_b_dset1_train_plot.png>
-Package pdftex.def Info: figures/q1_b_dset1_train_plot.png  used on input line 100.
+Package pdftex.def Info: figures/q1_b_dset1_train_plot.png  used on input line 104.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q1_b_dset1_learned_dist.png, id=31, 462.528pt x 346.896pt>
+<figures/q1_b_dset1_learned_dist.png, id=32, 462.528pt x 346.896pt>
 File: figures/q1_b_dset1_learned_dist.png Graphic file (type png)
 <use figures/q1_b_dset1_learned_dist.png>
-Package pdftex.def Info: figures/q1_b_dset1_learned_dist.png  used on input line 106.
+Package pdftex.def Info: figures/q1_b_dset1_learned_dist.png  used on input line 110.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 94--109
+Underfull \hbox (badness 10000) in paragraph at lines 98--113
 
  []
 
-<figures/q1_b_dset2_train_plot.png, id=32, 462.528pt x 346.896pt>
+<figures/q1_b_dset2_train_plot.png, id=33, 462.528pt x 346.896pt>
 File: figures/q1_b_dset2_train_plot.png Graphic file (type png)
 <use figures/q1_b_dset2_train_plot.png>
-Package pdftex.def Info: figures/q1_b_dset2_train_plot.png  used on input line 115.
+Package pdftex.def Info: figures/q1_b_dset2_train_plot.png  used on input line 119.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q1_b_dset2_learned_dist.png, id=33, 462.528pt x 346.896pt>
+<figures/q1_b_dset2_learned_dist.png, id=34, 462.528pt x 346.896pt>
 File: figures/q1_b_dset2_learned_dist.png Graphic file (type png)
 <use figures/q1_b_dset2_learned_dist.png>
-Package pdftex.def Info: figures/q1_b_dset2_learned_dist.png  used on input line 121.
+Package pdftex.def Info: figures/q1_b_dset2_learned_dist.png  used on input line 125.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [3 <./figures/q1_b_dset1_train_plot.png> <./figures/q1_b_dset1_learned_dist.png> <./figures/q1_b_dset2_train_plot.png> <./figures/q1_b_dset2_learned_dist.png>]
-<figures/q2_a_dset1_train_plot.png, id=45, 462.528pt x 346.896pt>
+<figures/q2_a_dset1_train_plot.png, id=46, 462.528pt x 346.896pt>
 File: figures/q2_a_dset1_train_plot.png Graphic file (type png)
 <use figures/q2_a_dset1_train_plot.png>
-Package pdftex.def Info: figures/q2_a_dset1_train_plot.png  used on input line 144.
+Package pdftex.def Info: figures/q2_a_dset1_train_plot.png  used on input line 148.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q2_a_dset1_samples.png, id=46, 462.528pt x 346.896pt>
+<figures/q2_a_dset1_samples.png, id=47, 462.528pt x 346.896pt>
 File: figures/q2_a_dset1_samples.png Graphic file (type png)
 <use figures/q2_a_dset1_samples.png>
-Package pdftex.def Info: figures/q2_a_dset1_samples.png  used on input line 150.
+Package pdftex.def Info: figures/q2_a_dset1_samples.png  used on input line 154.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 138--153
+Underfull \hbox (badness 10000) in paragraph at lines 142--157
 
  []
 
-<figures/q2_a_dset2_train_plot.png, id=47, 462.528pt x 346.896pt>
+<figures/q2_a_dset2_train_plot.png, id=48, 462.528pt x 346.896pt>
 File: figures/q2_a_dset2_train_plot.png Graphic file (type png)
 <use figures/q2_a_dset2_train_plot.png>
-Package pdftex.def Info: figures/q2_a_dset2_train_plot.png  used on input line 159.
+Package pdftex.def Info: figures/q2_a_dset2_train_plot.png  used on input line 163.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q2_a_dset2_samples.png, id=48, 462.528pt x 346.896pt>
+<figures/q2_a_dset2_samples.png, id=49, 462.528pt x 346.896pt>
 File: figures/q2_a_dset2_samples.png Graphic file (type png)
 <use figures/q2_a_dset2_samples.png>
-Package pdftex.def Info: figures/q2_a_dset2_samples.png  used on input line 165.
+Package pdftex.def Info: figures/q2_a_dset2_samples.png  used on input line 169.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [4 <./figures/q2_a_dset1_train_plot.png> <./figures/q2_a_dset1_samples.png> <./figures/q2_a_dset2_train_plot.png> <./figures/q2_a_dset2_samples.png>]
-<figures/q2_b_dset1_train_plot.png, id=60, 462.528pt x 346.896pt>
+<figures/q2_b_dset1_train_plot.png, id=61, 462.528pt x 346.896pt>
 File: figures/q2_b_dset1_train_plot.png Graphic file (type png)
 <use figures/q2_b_dset1_train_plot.png>
-Package pdftex.def Info: figures/q2_b_dset1_train_plot.png  used on input line 178.
+Package pdftex.def Info: figures/q2_b_dset1_train_plot.png  used on input line 182.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q2_b_dset1_samples.png, id=61, 462.528pt x 346.896pt>
+<figures/q2_b_dset1_samples.png, id=62, 462.528pt x 346.896pt>
 File: figures/q2_b_dset1_samples.png Graphic file (type png)
 <use figures/q2_b_dset1_samples.png>
-Package pdftex.def Info: figures/q2_b_dset1_samples.png  used on input line 184.
+Package pdftex.def Info: figures/q2_b_dset1_samples.png  used on input line 188.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 172--187
+Underfull \hbox (badness 10000) in paragraph at lines 176--191
 
  []
 
-<figures/q2_b_dset2_train_plot.png, id=62, 462.528pt x 346.896pt>
+<figures/q2_b_dset2_train_plot.png, id=63, 462.528pt x 346.896pt>
 File: figures/q2_b_dset2_train_plot.png Graphic file (type png)
 <use figures/q2_b_dset2_train_plot.png>
-Package pdftex.def Info: figures/q2_b_dset2_train_plot.png  used on input line 193.
+Package pdftex.def Info: figures/q2_b_dset2_train_plot.png  used on input line 197.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q2_b_dset2_samples.png, id=63, 462.528pt x 346.896pt>
+<figures/q2_b_dset2_samples.png, id=64, 462.528pt x 346.896pt>
 File: figures/q2_b_dset2_samples.png Graphic file (type png)
 <use figures/q2_b_dset2_samples.png>
-Package pdftex.def Info: figures/q2_b_dset2_samples.png  used on input line 199.
+Package pdftex.def Info: figures/q2_b_dset2_samples.png  used on input line 203.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [5 <./figures/q2_b_dset1_train_plot.png> <./figures/q2_b_dset1_samples.png> <./figures/q2_b_dset2_train_plot.png> <./figures/q2_b_dset2_samples.png>]
-<figures/q3_a_dset1_train_plot.png, id=75, 462.528pt x 346.896pt>
+<figures/q3_a_dset1_train_plot.png, id=76, 462.528pt x 346.896pt>
 File: figures/q3_a_dset1_train_plot.png Graphic file (type png)
 <use figures/q3_a_dset1_train_plot.png>
-Package pdftex.def Info: figures/q3_a_dset1_train_plot.png  used on input line 221.
+Package pdftex.def Info: figures/q3_a_dset1_train_plot.png  used on input line 225.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q3_a_dset1_samples.png, id=76, 462.528pt x 346.896pt>
+<figures/q3_a_dset1_samples.png, id=77, 462.528pt x 346.896pt>
 File: figures/q3_a_dset1_samples.png Graphic file (type png)
 <use figures/q3_a_dset1_samples.png>
-Package pdftex.def Info: figures/q3_a_dset1_samples.png  used on input line 227.
+Package pdftex.def Info: figures/q3_a_dset1_samples.png  used on input line 231.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 215--230
+Underfull \hbox (badness 10000) in paragraph at lines 219--234
 
  []
 
-<figures/q3_a_dset2_train_plot.png, id=77, 462.528pt x 346.896pt>
+<figures/q3_a_dset2_train_plot.png, id=78, 462.528pt x 346.896pt>
 File: figures/q3_a_dset2_train_plot.png Graphic file (type png)
 <use figures/q3_a_dset2_train_plot.png>
-Package pdftex.def Info: figures/q3_a_dset2_train_plot.png  used on input line 237.
+Package pdftex.def Info: figures/q3_a_dset2_train_plot.png  used on input line 240.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q3_a_dset2_samples.png, id=78, 462.528pt x 346.896pt>
+<figures/q3_a_dset2_samples.png, id=79, 462.528pt x 346.896pt>
 File: figures/q3_a_dset2_samples.png Graphic file (type png)
 <use figures/q3_a_dset2_samples.png>
-Package pdftex.def Info: figures/q3_a_dset2_samples.png  used on input line 243.
+Package pdftex.def Info: figures/q3_a_dset2_samples.png  used on input line 246.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [6 <./figures/q3_a_dset1_train_plot.png> <./figures/q3_a_dset1_samples.png> <./figures/q3_a_dset2_train_plot.png> <./figures/q3_a_dset2_samples.png>]
-<figures/q3_b_dset1_train_plot.png, id=90, 462.528pt x 346.896pt>
+<figures/q3_b_dset1_train_plot.png, id=91, 462.528pt x 346.896pt>
 File: figures/q3_b_dset1_train_plot.png Graphic file (type png)
 <use figures/q3_b_dset1_train_plot.png>
-Package pdftex.def Info: figures/q3_b_dset1_train_plot.png  used on input line 256.
+Package pdftex.def Info: figures/q3_b_dset1_train_plot.png  used on input line 259.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q3_b_dset1_samples.png, id=91, 462.528pt x 346.896pt>
+<figures/q3_b_dset1_samples.png, id=92, 462.528pt x 346.896pt>
 File: figures/q3_b_dset1_samples.png Graphic file (type png)
 <use figures/q3_b_dset1_samples.png>
-Package pdftex.def Info: figures/q3_b_dset1_samples.png  used on input line 262.
+Package pdftex.def Info: figures/q3_b_dset1_samples.png  used on input line 265.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 250--265
+Underfull \hbox (badness 10000) in paragraph at lines 253--268
 
  []
 
-<figures/q3_b_dset2_train_plot.png, id=92, 462.528pt x 346.896pt>
+<figures/q3_b_dset2_train_plot.png, id=93, 462.528pt x 346.896pt>
 File: figures/q3_b_dset2_train_plot.png Graphic file (type png)
 <use figures/q3_b_dset2_train_plot.png>
-Package pdftex.def Info: figures/q3_b_dset2_train_plot.png  used on input line 271.
+Package pdftex.def Info: figures/q3_b_dset2_train_plot.png  used on input line 274.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q3_b_dset2_samples.png, id=93, 462.528pt x 346.896pt>
+<figures/q3_b_dset2_samples.png, id=94, 462.528pt x 346.896pt>
 File: figures/q3_b_dset2_samples.png Graphic file (type png)
 <use figures/q3_b_dset2_samples.png>
-Package pdftex.def Info: figures/q3_b_dset2_samples.png  used on input line 277.
+Package pdftex.def Info: figures/q3_b_dset2_samples.png  used on input line 280.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [7 <./figures/q3_b_dset1_train_plot.png> <./figures/q3_b_dset1_samples.png> <./figures/q3_b_dset2_train_plot.png> <./figures/q3_b_dset2_samples.png>]
-<figures/q3_c_dset1_timing_plot.png, id=106, 462.528pt x 346.896pt>
+<figures/q3_c_dset1_timing_plot.png, id=107, 462.528pt x 346.896pt>
 File: figures/q3_c_dset1_timing_plot.png Graphic file (type png)
 <use figures/q3_c_dset1_timing_plot.png>
-Package pdftex.def Info: figures/q3_c_dset1_timing_plot.png  used on input line 287.
+Package pdftex.def Info: figures/q3_c_dset1_timing_plot.png  used on input line 290.
 (pdftex.def)             Requested size: 417.26999pt x 312.96573pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 284--289
+Underfull \hbox (badness 10000) in paragraph at lines 287--292
 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 284--289
+Underfull \hbox (badness 10000) in paragraph at lines 287--292
 
  []
 
-<figures/q3_c_no_cache_dset1_samples.png, id=107, 462.528pt x 346.896pt>
+<figures/q3_c_no_cache_dset1_samples.png, id=108, 462.528pt x 346.896pt>
 File: figures/q3_c_no_cache_dset1_samples.png Graphic file (type png)
 <use figures/q3_c_no_cache_dset1_samples.png>
-Package pdftex.def Info: figures/q3_c_no_cache_dset1_samples.png  used on input line 295.
+Package pdftex.def Info: figures/q3_c_no_cache_dset1_samples.png  used on input line 298.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q3_c_with_cache_dset1_samples.png, id=108, 462.528pt x 346.896pt>
+<figures/q3_c_with_cache_dset1_samples.png, id=109, 462.528pt x 346.896pt>
 File: figures/q3_c_with_cache_dset1_samples.png Graphic file (type png)
 <use figures/q3_c_with_cache_dset1_samples.png>
-Package pdftex.def Info: figures/q3_c_with_cache_dset1_samples.png  used on input line 301.
+Package pdftex.def Info: figures/q3_c_with_cache_dset1_samples.png  used on input line 304.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [8 <./figures/q3_c_dset1_timing_plot.png> <./figures/q3_c_no_cache_dset1_samples.png> <./figures/q3_c_with_cache_dset1_samples.png>]
-<figures/q4_a_dset1_samples.png, id=119, 462.528pt x 346.896pt>
+<figures/q4_a_dset1_samples.png, id=120, 462.528pt x 346.896pt>
 File: figures/q4_a_dset1_samples.png Graphic file (type png)
 <use figures/q4_a_dset1_samples.png>
-Package pdftex.def Info: figures/q4_a_dset1_samples.png  used on input line 322.
+Package pdftex.def Info: figures/q4_a_dset1_samples.png  used on input line 325.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q4_a_dset2_samples.png, id=120, 462.528pt x 346.896pt>
+<figures/q4_a_dset2_samples.png, id=121, 462.528pt x 346.896pt>
 File: figures/q4_a_dset2_samples.png Graphic file (type png)
 <use figures/q4_a_dset2_samples.png>
-Package pdftex.def Info: figures/q4_a_dset2_samples.png  used on input line 328.
+Package pdftex.def Info: figures/q4_a_dset2_samples.png  used on input line 331.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 317--331
+Underfull \hbox (badness 10000) in paragraph at lines 320--334
 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 317--331
+Underfull \hbox (badness 10000) in paragraph at lines 320--334
 
  []
 
-<figures/q4_b_dset1_train_plot.png, id=121, 462.528pt x 346.896pt>
+<figures/q4_b_dset1_train_plot.png, id=122, 462.528pt x 346.896pt>
 File: figures/q4_b_dset1_train_plot.png Graphic file (type png)
 <use figures/q4_b_dset1_train_plot.png>
-Package pdftex.def Info: figures/q4_b_dset1_train_plot.png  used on input line 339.
+Package pdftex.def Info: figures/q4_b_dset1_train_plot.png  used on input line 342.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q4_b_dset1_samples.png, id=122, 462.528pt x 346.896pt>
+<figures/q4_b_dset1_samples.png, id=123, 462.528pt x 346.896pt>
 File: figures/q4_b_dset1_samples.png Graphic file (type png)
 <use figures/q4_b_dset1_samples.png>
-Package pdftex.def Info: figures/q4_b_dset1_samples.png  used on input line 345.
+Package pdftex.def Info: figures/q4_b_dset1_samples.png  used on input line 348.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 333--348
+Underfull \hbox (badness 10000) in paragraph at lines 336--351
 
  []
 
-<figures/q4_b_dset2_train_plot.png, id=123, 462.528pt x 346.896pt>
+<figures/q4_b_dset2_train_plot.png, id=124, 462.528pt x 346.896pt>
 File: figures/q4_b_dset2_train_plot.png Graphic file (type png)
 <use figures/q4_b_dset2_train_plot.png>
-Package pdftex.def Info: figures/q4_b_dset2_train_plot.png  used on input line 354.
+Package pdftex.def Info: figures/q4_b_dset2_train_plot.png  used on input line 357.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q4_b_dset2_samples.png, id=124, 462.528pt x 346.896pt>
+<figures/q4_b_dset2_samples.png, id=125, 462.528pt x 346.896pt>
 File: figures/q4_b_dset2_samples.png Graphic file (type png)
 <use figures/q4_b_dset2_samples.png>
-Package pdftex.def Info: figures/q4_b_dset2_samples.png  used on input line 360.
+Package pdftex.def Info: figures/q4_b_dset2_samples.png  used on input line 363.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
 [9 <./figures/q4_a_dset1_samples.png> <./figures/q4_a_dset2_samples.png> <./figures/q4_b_dset1_train_plot.png> <./figures/q4_b_dset1_samples.png>] [10 <./figures/q4_b_dset2_train_plot.png> <./figures/q4_b_dset2_samples.png>]
-Underfull \hbox (badness 10000) in paragraph at lines 377--381
+Underfull \hbox (badness 10000) in paragraph at lines 380--384
 
  []
 
-<figures/q5_a_train_plot.png, id=144, 462.528pt x 346.896pt>
+<figures/q5_a_train_plot.png, id=145, 462.528pt x 346.896pt>
 File: figures/q5_a_train_plot.png Graphic file (type png)
 <use figures/q5_a_train_plot.png>
-Package pdftex.def Info: figures/q5_a_train_plot.png  used on input line 391.
+Package pdftex.def Info: figures/q5_a_train_plot.png  used on input line 394.
 (pdftex.def)             Requested size: 125.18227pt x 93.88548pt.
-<figures/q5_a_samples.png, id=145, 289.08pt x 433.62pt>
+<figures/q5_a_samples.png, id=146, 289.08pt x 433.62pt>
 File: figures/q5_a_samples.png Graphic file (type png)
 <use figures/q5_a_samples.png>
-Package pdftex.def Info: figures/q5_a_samples.png  used on input line 397.
+Package pdftex.def Info: figures/q5_a_samples.png  used on input line 400.
 (pdftex.def)             Requested size: 271.22293pt x 406.8552pt.
 [11 <./figures/q5_a_train_plot.png> <./figures/q5_a_samples.png>]
-<figures/q6_a_train_plot.png, id=156, 462.528pt x 346.896pt>
+<figures/q6_a_train_plot.png, id=157, 462.528pt x 346.896pt>
 File: figures/q6_a_train_plot.png Graphic file (type png)
 <use figures/q6_a_train_plot.png>
-Package pdftex.def Info: figures/q6_a_train_plot.png  used on input line 420.
+Package pdftex.def Info: figures/q6_a_train_plot.png  used on input line 423.
 (pdftex.def)             Requested size: 187.77022pt x 140.83087pt.
-<figures/q6_a_samples_unconditional.png, id=157, 433.62pt x 433.62pt>
+<figures/q6_a_samples_img_conditioned.png, id=158, 433.62pt x 433.62pt>
+File: figures/q6_a_samples_img_conditioned.png Graphic file (type png)
+<use figures/q6_a_samples_img_conditioned.png>
+Package pdftex.def Info: figures/q6_a_samples_img_conditioned.png  used on input line 429.
+(pdftex.def)             Requested size: 187.77022pt x 187.76964pt.
+<figures/q6_a_samples_text_conditioned.png, id=159, 433.62pt x 433.62pt>
+File: figures/q6_a_samples_text_conditioned.png Graphic file (type png)
+<use figures/q6_a_samples_text_conditioned.png>
+Package pdftex.def Info: figures/q6_a_samples_text_conditioned.png  used on input line 434.
+(pdftex.def)             Requested size: 187.77022pt x 187.76964pt.
+<figures/q6_a_samples_unconditional.png, id=160, 433.62pt x 433.62pt>
 File: figures/q6_a_samples_unconditional.png Graphic file (type png)
 <use figures/q6_a_samples_unconditional.png>
-Package pdftex.def Info: figures/q6_a_samples_unconditional.png  used on input line 437.
+Package pdftex.def Info: figures/q6_a_samples_unconditional.png  used on input line 440.
 (pdftex.def)             Requested size: 187.77022pt x 187.76964pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 414--440
+Underfull \hbox (badness 10000) in paragraph at lines 417--443
 
  []
 
-[12 <./figures/q6_a_train_plot.png> <./figures/q6_a_samples_unconditional.png>] (./main.aux)
+[12 <./figures/q6_a_train_plot.png> <./figures/q6_a_samples_img_conditioned.png> <./figures/q6_a_samples_text_conditioned.png> <./figures/q6_a_samples_unconditional.png>] (./main.aux)
 Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
  ) 
 Here is how much of TeX's memory you used:
- 11601 strings out of 476025
- 190118 string characters out of 5790017
- 1857388 words of memory out of 5000000
- 31858 multiletter control sequences out of 15000+600000
- 513546 words of font info for 36 fonts, out of 8000000 for 9000
+ 11618 strings out of 476025
+ 190761 string characters out of 5790017
+ 1858388 words of memory out of 5000000
+ 31872 multiletter control sequences out of 15000+600000
+ 513714 words of font info for 37 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,9n,77p,774b,614s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsl10.pfb>
-Output written on main.pdf (12 pages, 2257216 bytes).
+ 75i,9n,77p,774b,615s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsl10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
+Output written on main.pdf (12 pages, 2448813 bytes).
 PDF statistics:
- 202 PDF objects out of 1000 (max. 8388607)
- 102 compressed objects within 2 object streams
+ 211 PDF objects out of 1000 (max. 8388607)
+ 105 compressed objects within 2 object streams
  45 named destinations out of 1000 (max. 500000)
- 186 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 196 words of extra memory for PDF output out of 10000 (max. 10000000)
 
