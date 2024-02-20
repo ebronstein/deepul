@@ -138,7 +138,7 @@ Final Full -ELBO: 4.4303, Recon Loss: 4.4206, KL Loss: 0.0097 (Dataset 2)
     \end{subfigure}
     \caption{Results for Dataset 2}
 \end{figure}
-\textbf{Answer: Your answer to the reflection portion of part (b) reflection here (replace this text)}
+\textbf{Answer:} The latents are being used for the datasets in part (a) but not in part (b). Since the data in part(b) comes from a Normal distribution with a diagonal covariate matrix, both the latents and the data are 2D, and latent prior is also a diagonal Gaussian, the latents are not needed to recover the data distribution. The latents can simply be mostly constant, which can be seen from the no-noise samples in part (b) that are mostly clustered around $[-1, 2]$ (i.e., near the mean of the data). The learned decoder variance and the samples $\epsilon \sim \mathcal{N} (0, 1)$ are sufficient to accurately describe the data. In contrast, the dataset in part (b) has a full covariance matrix, so using a constant latent plus a learned covariance times the noise is insufficient to represent it. For this reason, we see that the samples without noise actually look like a de-noised version of the dataset.
 \end{enumerate}
 
 
