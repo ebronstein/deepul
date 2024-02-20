@@ -5,3 +5,6 @@
 *.png
 *.pkl
 *.jpg
+*.pth
+slurm*
+build*
