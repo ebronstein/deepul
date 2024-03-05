@@ -248,14 +248,16 @@ class Solver(object):
         gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=1) + 1e-12)
         return ((gradients_norm - 1) ** 2).mean()
 
-    def train(self, verbose=False):
-        train_losses = []
+    def train(self, verbose=False, checkpoint_freq=100):
+        train_g_losses = []
+        train_d_losses = []
         for epoch_i in tqdm_notebook(range(self.n_epochs), desc="Epoch", leave=False):
             # epoch_i += 1
 
             self.d.train()
             self.g.train()
-            self.batch_loss_history = []
+            g_batch_loss_history = []
+            d_batch_loss_history = []
 
             for batch_i, x in enumerate(
                 tqdm_notebook(self.train_loader, desc="Batch", leave=False)
@@ -274,6 +276,7 @@ class Solver(object):
                 d_loss = d_fake_loss - d_real_loss + 10 * gp
                 d_loss.backward()
                 self.d_optimizer.step()
+                d_batch_loss_history.append(d_loss.data.cpu().numpy())
 
                 # generator update
                 if self.curr_itr % self.n_critic == 0:
@@ -287,20 +290,28 @@ class Solver(object):
                     self.g_scheduler.step()
                     self.d_scheduler.step()
 
-                    self.batch_loss_history.append(g_loss.data.cpu().numpy())
+                    g_batch_loss_history.append(g_loss.data.cpu().numpy())
 
                     if verbose:
                         print(
                             f"Epoch {epoch_i}, Batch {batch_i}: D loss: {d_loss.data.cpu().numpy()}, D fake loss: {d_fake_loss.data.cpu().numpy()}, D real loss: {d_real_loss.data.cpu().numpy()}, GP: {gp.data.cpu().numpy()} G loss: {g_loss.data.cpu().numpy()}, G LR: {self.g_scheduler.get_last_lr()}, D LR: {self.d_scheduler.get_last_lr()}"
                         )
 
-            epoch_loss = np.mean(self.batch_loss_history)
-            train_losses.append(epoch_loss)
-            np.save("q2_train_losses.npy", np.array(train_losses))
+            g_epoch_loss = np.mean(g_batch_loss_history)
+            train_g_losses.append(g_epoch_loss)
+            d_epoch_loss = np.mean(d_batch_loss_history)
+            train_d_losses.append(d_epoch_loss)
+            np.save("q2_train_g_losses.npy", np.array(train_g_losses))
+            np.save("q2_train_d_losses.npy", np.array(train_d_losses))
 
-        train_losses = np.array(train_losses)
-        self.save_model(f"{self.part_name}.pt")
-        return train_losses
+            # Save a checkpoint.
+            if epoch_i % checkpoint_freq == 0:
+                self.save_model(f"{self.part_name}_epoch_{epoch_i}.pt")
+
+        train_g_losses = np.array(train_g_losses)
+        train_d_losses = np.array(train_d_losses)
+        self.save_model(f"{self.part_name}_final.pt")
+        return train_g_losses, train_d_losses
 
     def save_model(self, filename):
         torch.save(self.g.state_dict(), "g_" + filename)
@@ -344,10 +355,10 @@ def q2(train_data, load=False):
     solver = Solver(train_data, n_iterations=50000)
     solver.build("q2")
     if load:
-        solver.load_model("q2_v0.pt")
-        losses = np.load("q2_train_losses.npy")
+        solver.load_model("q2_final.pt")
+        train_d_losses = np.load("q2_train_d_losses.npy")
     else:
-        losses = solver.train(verbose=True)
+        train_g_losses, train_d_losses = solver.train(verbose=True)
 
     solver.g.eval()
     solver.d.eval()
@@ -355,7 +366,7 @@ def q2(train_data, load=False):
         samples = solver.g.sample(1000)
         samples = ptu.get_numpy(samples.permute(0, 2, 3, 1)) * 0.5 + 0.5
 
-    return losses, samples
+    return train_d_losses, samples
 
 
 def main(args):
