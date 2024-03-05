@@ -1,24 +1,25 @@
+import math
+import sys
+
+import cv2
 import numpy as np
+import scipy.ndimage
 import torch.nn as nn
 import torch.utils.data
 import torchvision
-from torchvision import transforms as transforms
-from .utils import *
-from .hw3_utils.hw3_models import GoogLeNet
 from PIL import Image as PILImage
-import scipy.ndimage
-import cv2
+from torchvision import transforms as transforms
+
 import deepul.pytorch_util as ptu
 
-import numpy as np
-import math
-import sys
+from .hw3_utils.hw3_models import GoogLeNet
+from .utils import *
 
 softmax = None
 model = None
 device = torch.device("cuda:0")
 
-def plot_gan_training(losses, title, fname):
+def plot_gan_training(losses, title, fname=None):
     plt.figure()
     n_itr = len(losses)
     xs = np.arange(n_itr)
@@ -38,7 +39,10 @@ def q1_gan_plot(data, samples, xs, ys, title, fname):
     plt.plot(xs, ys, label='discrim')
     plt.legend()
     plt.title(title)
-    savefig(fname)
+    if fname is None:
+        plt.show()
+    else:
+        savefig(fname)
 
 
 ######################
@@ -109,14 +113,16 @@ def visualize_q2_data():
     imgs = train_data.data[:100]
     show_samples(imgs, title=f'CIFAR-10 Samples')
 
-def q2_save_results(fn):
+def q2_save_results(fn, save=True):
     train_data = load_q2_data()
     train_data = train_data.data.transpose((0, 3, 1, 2)) / 255.0
     train_losses, samples = fn(train_data)
 
     print("Inception score:", calculate_is(samples.transpose([0, 3, 1, 2])))
-    plot_gan_training(train_losses, 'Q2 Losses', 'results/q2_losses.png')
-    show_samples(samples[:100] * 255.0, fname='results/q2_samples.png', title=f'CIFAR-10 generated samples')
+    gan_fname = 'results/q2_losses.png' if save else None
+    plot_gan_training(train_losses, 'Q2 Losses', gan_fname)
+    samples_fname = 'results/q2_samples.png' if save else None
+    show_samples(samples[:100] * 255.0, fname=samples_fname, title=f'CIFAR-10 generated samples')
 
 ######################
 ##### Question 3 #####

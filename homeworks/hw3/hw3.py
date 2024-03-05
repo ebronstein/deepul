@@ -192,7 +192,11 @@ class Solver(object):
         self.n_filters = n_filters
         self.train_loader = self.create_loaders(train_data)
         self.n_batches_in_epoch = len(self.train_loader)
+        # Number of epochs to train in order to have n_iterations of the
+        # generator, meaning that do a gradient update for the generator
+        # n_iterations times.
         self.n_epochs = self.n_critic * n_iterations // self.n_batches_in_epoch
+        self.n_iterations = n_iterations
         self.curr_itr = 0
 
     def build(self, part_name):
@@ -203,7 +207,7 @@ class Solver(object):
         )
         self.g_scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.g_optimizer,
-            lambda epoch: (self.n_epochs - epoch) / self.n_epochs,
+            lambda iter: (self.n_iterations - iter) / self.n_iterations,
             last_epoch=-1,
         )
         self.d_optimizer = torch.optim.Adam(
@@ -211,7 +215,7 @@ class Solver(object):
         )
         self.d_scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.d_optimizer,
-            lambda epoch: (self.n_epochs - epoch) / self.n_epochs,
+            lambda iter: (self.n_iterations - iter) / self.n_iterations,
             last_epoch=-1,
         )
         self.part_name = part_name
@@ -244,30 +248,33 @@ class Solver(object):
         gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=1) + 1e-12)
         return ((gradients_norm - 1) ** 2).mean()
 
-    def train(self):
+    def train(self, verbose=False):
         train_losses = []
-        for epoch_i in tqdm(range(self.n_epochs), desc="Epoch", leave=False):
-            epoch_i += 1
+        for epoch_i in tqdm_notebook(range(self.n_epochs), desc="Epoch", leave=False):
+            # epoch_i += 1
 
             self.d.train()
             self.g.train()
             self.batch_loss_history = []
 
             for batch_i, x in enumerate(
-                tqdm(self.train_loader, desc="Batch", leave=False)
+                tqdm_notebook(self.train_loader, desc="Batch", leave=False)
             ):
-                batch_i += 1
                 self.curr_itr += 1
                 x = ptu.tensor(x).float()
+                # Normalize x to [-1, 1].
                 x = 2 * (x - 0.5)
 
                 # do a critic update
                 self.d_optimizer.zero_grad()
                 fake_data = self.g.sample(x.shape[0])
                 gp = self.gradient_penalty(x, fake_data)
-                d_loss = self.d(fake_data).mean() - self.d(x).mean() + 10 * gp
+                d_fake_loss = self.d(fake_data).mean()
+                d_real_loss = self.d(x).mean()
+                d_loss = d_fake_loss - d_real_loss + 10 * gp
                 d_loss.backward()
                 self.d_optimizer.step()
+
                 # generator update
                 if self.curr_itr % self.n_critic == 0:
                     self.g_optimizer.zero_grad()
@@ -281,6 +288,11 @@ class Solver(object):
                     self.d_scheduler.step()
 
                     self.batch_loss_history.append(g_loss.data.cpu().numpy())
+
+                    if verbose:
+                        print(
+                            f"Epoch {epoch_i}, Batch {batch_i}: D loss: {d_loss.data.cpu().numpy()}, D fake loss: {d_fake_loss.data.cpu().numpy()}, D real loss: {d_real_loss.data.cpu().numpy()}, GP: {gp.data.cpu().numpy()} G loss: {g_loss.data.cpu().numpy()}, G LR: {self.g_scheduler.get_last_lr()}, D LR: {self.d_scheduler.get_last_lr()}"
+                        )
 
             epoch_loss = np.mean(self.batch_loss_history)
             train_losses.append(epoch_loss)
@@ -333,10 +345,10 @@ def q2(train_data, load=False):
     solver = Solver(train_data, n_iterations=50000)
     solver.build("q2")
     if load:
-        solver.load_model("q2.pt")
+        solver.load_model("q2_v0.pt")
         losses = np.load("q2_train_losses.npy")
     else:
-        losses = solver.train()
+        losses = solver.train(verbose=True)
 
     solver.g.eval()
     solver.d.eval()
