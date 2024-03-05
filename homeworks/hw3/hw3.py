@@ -316,7 +316,6 @@ class Solver(object):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.fc = nn.Linear(128, 4 * 4 * 256)
         network = [
             ResnetBlockDown(3, n_filters=128),
             ResnetBlockDown(128, n_filters=128),
