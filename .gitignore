@@ -5,3 +5,5 @@
 *.png
 *.pkl
 *.jpg
+build*
+*slurm
