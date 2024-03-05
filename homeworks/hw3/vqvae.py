@@ -161,6 +161,15 @@ class VQVAE(nn.Module):
             code = self.codebook.embedding(z).permute(0, 3, 1, 2).contiguous()
             return self.decoder(code).permute(0, 2, 3, 1).cpu().numpy()
 
+    def reconstruct(self, x):
+        # Encode
+        z = self.encoder(x)
+        # Get the code
+        code, code_stop_grad, _ = self.codebook(z)
+        # Decode the code token
+        x_recon = self.decoder(code_stop_grad)
+        return x_recon
+
     def forward(self, x):
         # Encode
         z = self.encoder(x)
