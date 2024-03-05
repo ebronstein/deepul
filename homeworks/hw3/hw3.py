@@ -321,7 +321,7 @@ class Discriminator(nn.Module):
         return self.fc(z)
 
 
-def q2(train_data):
+def q2(train_data, load=False):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
 
@@ -332,8 +332,11 @@ def q2(train_data):
     """
     solver = Solver(train_data, n_iterations=50000)
     solver.build("q2")
-    losses = solver.train()
-    # solver.load_model("q2.pt")
+    if load:
+        solver.load_model("q2.pt")
+        losses = np.load("q2_train_losses.npy")
+    else:
+        losses = solver.train()
 
     solver.g.eval()
     solver.d.eval()
