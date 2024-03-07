@@ -478,15 +478,12 @@ class VQGAN(object):
         code_size=1024,
         num_epochs=15,
         vit_vqgan: bool = False,
+        use_scheduler: bool = True,
     ):
-        self.train_loader = self.create_loaders(
-            train_data, batch_size=batch_size, shuffle=True
-        )
-        self.val_loader = self.create_loaders(
-            val_data, batch_size=batch_size, shuffle=False
-        )
+        self.train_loader = self.create_loaders(train_data, batch_size, shuffle=True)
+        self.val_loader = self.create_loaders(val_data, batch_size, shuffle=False)
         self.reconstruct_loader = self.create_loaders(
-            reconstruct_data, batch_size=batch_size, shuffle=False
+            reconstruct_data, batch_size, shuffle=False
         )
 
         # Initialize models, optimizers, and loss functions
@@ -502,8 +499,8 @@ class VQGAN(object):
                 patchify=False,
                 add_spectral_norm=True,
             ).to(ptu.device)
-            g_lr = 2e-4  # 1e-3
-            betas = (0.5, 0.9)  # (0.9, 0.99)
+            g_lr = 1e-3  # 2e-4
+            betas = (0.9, 0.99)  # (0.5, 0.9)
         else:
             self.generator = vqvae.VQVAE(code_dim=code_dim, code_size=code_size).to(
                 ptu.device
@@ -523,6 +520,7 @@ class VQGAN(object):
         )
 
         self.num_epochs = num_epochs
+        self.use_scheduler = use_scheduler
         num_batches_in_epoch = len(self.train_loader)
         self.n_iterations = num_epochs * num_batches_in_epoch
         self.g_scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -536,9 +534,9 @@ class VQGAN(object):
             last_epoch=-1,
         )
 
-        self.lpips_loss_fn = LPIPS().to(ptu.device)
+        self.lpips_loss_fn = LPIPS().eval().to(ptu.device)
 
-    def create_loaders(self, data, batch_size=64, shuffle=True):
+    def create_loaders(self, data, batch_size, shuffle=True):
         data = (data * 2) - 1
         dataset = TensorDataset(torch.tensor(data).float())
         return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
@@ -560,39 +558,47 @@ class VQGAN(object):
             for i, (real_data,) in enumerate(
                 tqdm_notebook(self.train_loader, desc="Batch", leave=False)
             ):
-                # Training discriminator
                 self.d_optimizer.zero_grad()
+                self.g_optimizer.zero_grad()
+
+                # Training discriminator
                 real_data = ptu.tensor(real_data)
-                if self.vit_vqgan:
-                    fake_data, _ = self.generator(real_data)
-                else:
-                    fake_data = self.generator.reconstruct(real_data)
+                # if self.vit_vqgan:
+                #     fake_data, _ = self.generator(real_data)
+                # else:
+                #     fake_data = self.generator.reconstruct(real_data)
+                fake_data, g_reg_loss = self.generator(real_data)
                 d_real_loss = -(self.discriminator(real_data) + 1e-8).log().mean()
-                d_fake_loss = -(1 - self.discriminator(fake_data) + 1e-8).log().mean()
-                d_loss = 0.1 * 0.5 * (d_fake_loss + d_real_loss)
-                d_loss.backward()
-                self.d_optimizer.step()
+                d_fake_pred = self.discriminator(fake_data)
+                d_fake_loss = -(1 - d_fake_pred + 1e-8).log().mean()
+                # d_loss is same as loss_d (ignoring weighting factor)
+                d_loss = 0.1 * (d_fake_loss + d_real_loss)
+                d_loss.backward(retain_graph=True)
                 d_loss_val = d_loss.item()
                 discriminator_losses.append(d_loss_val)
 
                 # Training generator
-                self.g_optimizer.zero_grad()
-                fake_data, g_reg_loss = self.generator(real_data)
-                g_gan_loss = -(self.discriminator(fake_data) + 1e-8).log().mean()
+                # fake_data, g_reg_loss = self.generator(real_data)
+                # g_gan_loss is same as loss_g
+                g_gan_loss = -(d_fake_pred + 1e-8).log().mean()
                 l2_loss = nn.MSELoss()(real_data, fake_data)
                 lpips_loss = self.lpips_loss_fn(real_data, fake_data).mean()
-                g_loss = 0.1 * g_gan_loss + g_reg_loss + 0.1 * lpips_loss + l2_loss
+                g_loss = 0.1 * g_gan_loss + g_reg_loss + 0.5 * lpips_loss + l2_loss
                 if self.vit_vqgan:
                     l1_loss = nn.L1Loss()(real_data, fake_data).mean()
                     g_loss += 0.1 * l1_loss
                 g_loss.backward()
-                self.g_optimizer.step()
                 l_pips_losses.append(lpips_loss.item())
                 l2_recon_train.append(l2_loss.item())
 
+                # Step the optimizers
+                self.d_optimizer.step()
+                self.g_optimizer.step()
+
                 # Step the learning rate
-                self.g_scheduler.step()
-                self.d_scheduler.step()
+                if self.use_scheduler:
+                    self.g_scheduler.step()
+                    self.d_scheduler.step()
 
                 if verbose and iter % log_freq == 0:
                     print(f"Epoch {epoch}, Batch {i}:")
@@ -699,7 +705,14 @@ def q3b(train_data, val_data, reconstruct_data):
     - a (# of epochs + 1,) numpy array of l2 reconstruction loss evaluated once at initialization and after each epoch on the val_data
     - a (100, 32, 32, 3) numpy array of reconstructions from your model in [0, 1] on the reconstruct_data.
     """
-    vqgan = VQGAN(train_data, val_data, reconstruct_data, num_epochs=30, vit_vqgan=True)
+    vqgan = VQGAN(
+        train_data,
+        val_data,
+        reconstruct_data,
+        num_epochs=30,
+        vit_vqgan=True,
+        use_scheduler=False,
+    )
     discriminator_losses, l_pips_losses, l2_recon_train, l2_recon_test = vqgan.train(
         verbose=True, log_freq=50
     )
