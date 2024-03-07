@@ -124,7 +124,7 @@ class Codebook(nn.Module):
 
 
 class VQVAE(nn.Module):
-    def __init__(self, code_dim, code_size):
+    def __init__(self, code_dim, code_size, decoder_tanh=False):
         super().__init__()
 
         self.encoder = nn.Sequential(
@@ -139,7 +139,7 @@ class VQVAE(nn.Module):
         self.code_size = code_size
         self.codebook = Codebook(code_size, code_dim)
 
-        self.decoder = nn.Sequential(
+        decoder_layers = [
             ResBlock(code_dim),
             ResBlock(code_dim),
             nn.ReLU(),
@@ -148,8 +148,10 @@ class VQVAE(nn.Module):
             nn.ReLU(),
             nn.BatchNorm2d(code_dim),
             nn.ConvTranspose2d(code_dim, 3, 4, stride=2, padding=1),
-            # nn.Tanh(),
-        )
+        ]
+        if decoder_tanh:
+            decoder_layers.append(nn.Tanh())
+        self.decoder = nn.Sequential(*decoder_layers)
 
     def encode(self, x):
         with torch.no_grad():
