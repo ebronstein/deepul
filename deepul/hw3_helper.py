@@ -1,5 +1,6 @@
 import math
 import sys
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -168,11 +169,14 @@ def q3_save_results(fn, part):
     train_data, test_data = load_q3_data()
     gan_losses, lpips_losses, l2_train_losses, l2_val_losses, recon_show = fn(train_data, test_data, test_data[:100])
 
-    plot_gan_training(gan_losses, f'Q3{part} Discriminator Losses', f'results/q3{part}_gan_losses.png')
-    save_plot(l2_train_losses, l2_val_losses, f'Q3{part} L2 Losses', f'results/q3{part}_l2_losses.png')
-    save_plot(lpips_losses, None, f'Q3{part} LPIPS Losses', f'results/q3{part}_lpips_losses.png')
-    show_samples(test_data[:100].transpose(0, 2, 3, 1) * 255.0, nrow=20, fname=f'results/q3{part}_data_samples.png', title=f'Q3{part} CIFAR10 val samples')
-    show_samples(recon_show * 255.0, nrow=20, fname=f'results/q3{part}_reconstructions.png', title=f'Q3{part} VQGAN reconstructions')
+    # Create a timestamp suffix for the filenames.
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    plot_gan_training(gan_losses, f'Q3{part} Discriminator Losses', f'results/q3{part}_gan_losses_{timestamp}.png')
+    save_plot(l2_train_losses, l2_val_losses, f'Q3{part} L2 Losses', f'results/q3{part}_l2_losses_{timestamp}.png')
+    save_plot(lpips_losses, None, f'Q3{part} LPIPS Losses', f'results/q3{part}_lpips_losses_{timestamp}.png')
+    show_samples(test_data[:100].transpose(0, 2, 3, 1) * 255.0, nrow=20, fname=f'results/q3{part}_data_samples_{timestamp}.png', title=f'Q3{part} CIFAR10 val samples')
+    show_samples(recon_show * 255.0, nrow=20, fname=f'results/q3{part}_reconstructions_{timestamp}.png', title=f'Q3{part} VQGAN reconstructions')
     print('final_val_reconstruction_loss:', l2_val_losses[-1])
 
 ######################
