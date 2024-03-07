@@ -269,6 +269,7 @@ class BaseQuantizer(nn.Module):
         use_norm: bool = True,
         use_residual: bool = False,
         num_quantizers: Optional[int] = None,
+        embed_init: str = "normal",
     ) -> None:
         super().__init__()
         self.straight_through = straight_through
@@ -281,7 +282,12 @@ class BaseQuantizer(nn.Module):
         self.n_embed = n_embed
 
         self.embedding = nn.Embedding(self.n_embed, self.embed_dim)
-        self.embedding.weight.data.normal_()
+        if embed_init == "normal":
+            self.embedding.weight.data.normal_()
+        elif embed_init == "uniform":
+            self.embedding.weight.data.uniform_(-1 / self.n_embed, 1 / self.n_embed)
+        else:
+            raise ValueError(f"Unknown embedding initialization: {embed_init}")
 
     def quantize(
         self, z: torch.FloatTensor
@@ -329,7 +335,7 @@ class VectorQuantizer(BaseQuantizer):
         use_norm: bool = True,
         use_residual: bool = False,
         num_quantizers: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             embed_dim, n_embed, True, use_norm, use_residual, num_quantizers
@@ -378,6 +384,7 @@ class ViTVQ(nn.Module):
         decoder_mlp_dim: int = 256,
         code_dim: int = 256,
         code_size: int = 1024,
+        quantizer_kwargs: Optional[dict] = None,
     ) -> None:
         super().__init__()
         self.encoder = ViTEncoder(
@@ -396,10 +403,11 @@ class ViTVQ(nn.Module):
             heads=decoder_heads,
             mlp_dim=decoder_mlp_dim,
         )
-        # self.quantizer = Codebook(codebook_size=code_size, code_dim=code_dim)
-        self.quantizer = VectorQuantizer(code_dim, code_size)
+        quantizer_kwargs = quantizer_kwargs or {}
+        self.quantizer = VectorQuantizer(code_dim, code_size, **quantizer_kwargs)
         self.pre_quant = nn.Linear(encoder_dim, code_dim)
         self.post_quant = nn.Linear(code_dim, decoder_dim)
+        self.post_dec = nn.Tanh()
 
     # def reconstruct(self, x):
     #     print("x.shape: ", x.shape)
@@ -453,6 +461,7 @@ class ViTVQ(nn.Module):
     def decode(self, quant: torch.FloatTensor) -> torch.FloatTensor:
         quant = self.post_quant(quant)
         dec = self.decoder(quant)
+        dec = self.post_dec(dec)
 
         return dec
 
