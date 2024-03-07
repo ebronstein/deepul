@@ -253,6 +253,7 @@ class ViTDecoder(nn.Module):
         x = token + self.de_pos_embedding
         x = self.transformer(x)
         x = self.to_pixel(x)
+        x = torch.tanh(x)
 
         return x
 
@@ -346,7 +347,9 @@ class VectorQuantizer(BaseQuantizer):
     def quantize(
         self, z: torch.FloatTensor
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.LongTensor]:
+        # print("z.shape:", z.shape)
         z_reshaped_norm = self.norm(z.view(-1, self.embed_dim))
+        # print("z_reshaped_norm.shape:", z_reshaped_norm.shape)
         embedding_norm = self.norm(self.embedding.weight)
 
         d = (
@@ -356,7 +359,9 @@ class VectorQuantizer(BaseQuantizer):
         )
 
         encoding_indices = torch.argmin(d, dim=1).unsqueeze(1)
+        # print("encoding_indices.shape:", encoding_indices.shape)
         encoding_indices = encoding_indices.view(*z.shape[:-1])
+        # print("encoding_indices.shape:", encoding_indices.shape)
 
         z_q = self.embedding(encoding_indices).view(z.shape)
         z_qnorm, z_norm = self.norm(z_q), self.norm(z)
@@ -369,6 +374,41 @@ class VectorQuantizer(BaseQuantizer):
         return z_qnorm, loss, encoding_indices
 
 
+class Codebook(nn.Module):
+
+    def __init__(self, codebook_size, code_dim):
+        super().__init__()
+        self.code_dim = code_dim
+        self.codebook_size = codebook_size
+
+        self.embedding = nn.Embedding(codebook_size, code_dim)
+        # Initialize embedding to uniform random between -1/codebook_size and 1/codebook_size
+        self.embedding.weight.data.uniform_(-1.0 / codebook_size, 1.0 / codebook_size)
+
+    def forward(self, z):
+        # print("z.shape:", z.shape)
+        flattened_z = z.view(-1, self.code_dim)
+        # print("flattened_z.shape:", flattened_z.shape)
+        weight = self.embedding.weight
+        # Compute distances between z and embedding vectors
+        distances = (
+            (flattened_z**2).sum(dim=1, keepdim=True)
+            - 2 * torch.mm(flattened_z, weight.t())
+            + (weight.t() ** 2).sum(dim=0, keepdim=True)
+        )
+        encoding_indices = torch.argmin(distances, dim=1)
+        # print("encoding_indices.shape:", encoding_indices.shape)
+        encoding_indices = encoding_indices.view(*z.shape[:-1])
+        code = self.embedding(encoding_indices).view(z.shape)
+
+        # compute loss for embedding
+        loss = torch.mean((code.detach() - z) ** 2) + torch.mean(
+            (code - z.detach()) ** 2
+        )
+
+        return code, loss, encoding_indices
+
+
 class ViTVQ(nn.Module):
     def __init__(
         self,
@@ -377,11 +417,11 @@ class ViTVQ(nn.Module):
         encoder_dim: int = 256,
         encoder_depth: int = 4,
         encoder_heads: int = 8,
-        encoder_mlp_dim: int = 256,
+        encoder_mlp_dim: int = 1024,
         decoder_dim: int = 256,
         decoder_depth: int = 4,
         decoder_heads: int = 8,
-        decoder_mlp_dim: int = 256,
+        decoder_mlp_dim: int = 1024,
         code_dim: int = 256,
         code_size: int = 1024,
         quantizer_kwargs: Optional[dict] = None,
@@ -405,9 +445,9 @@ class ViTVQ(nn.Module):
         )
         quantizer_kwargs = quantizer_kwargs or {}
         self.quantizer = VectorQuantizer(code_dim, code_size, **quantizer_kwargs)
+        # self.quantizer = Codebook(code_size, code_dim)
         self.pre_quant = nn.Linear(encoder_dim, code_dim)
         self.post_quant = nn.Linear(code_dim, decoder_dim)
-        self.post_dec = nn.Tanh()
 
     # def reconstruct(self, x):
     #     print("x.shape: ", x.shape)
@@ -461,7 +501,6 @@ class ViTVQ(nn.Module):
     def decode(self, quant: torch.FloatTensor) -> torch.FloatTensor:
         quant = self.post_quant(quant)
         dec = self.decoder(quant)
-        dec = self.post_dec(dec)
 
         return dec
 
