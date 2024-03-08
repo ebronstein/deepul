@@ -1,3 +1,5 @@
+"""VQ-VAE implementation."""
+
 from collections import OrderedDict
 
 import numpy as np

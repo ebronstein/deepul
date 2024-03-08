@@ -1,3 +1,9 @@
+"""ViT VQ-GAN implementation.
+
+The main ViT implementation is borrowed from the source described below.
+One variant of the Codebook implementation is from the provided hw2 solutions.
+"""
+
 # ------------------------------------------------------------------------------------
 # Enhancing Transformers
 # Copyright (c) 2022 Thuan H. Nguyen. All Rights Reserved.
@@ -449,40 +455,6 @@ class ViTVQ(nn.Module):
         self.pre_quant = nn.Linear(encoder_dim, code_dim)
         self.post_quant = nn.Linear(code_dim, decoder_dim)
 
-    # def reconstruct(self, x):
-    #     print("x.shape: ", x.shape)
-    #     # Encode
-    #     z = self.encoder(x)
-    #     print("z.shape: ", z.shape)
-    #     z = self.pre_quant(z)
-    #     print("z.shape: ", z.shape)
-    #     # Get the code
-    #     code, code_stop_grad, _ = self.quantizer(z)
-    #     # Decode the code token
-    #     x_recon = self.decoder(self.post_quant(code_stop_grad))
-    #     return x_recon
-
-    # def forward(self, x):
-    #     print("x.shape: ", x.shape)
-    #     # Encode
-    #     z = self.encoder(x)
-    #     print("z.shape: ", z.shape)
-    #     z = self.pre_quant(z)
-    #     print("z.shape: ", z.shape)
-    #     # Get the code
-    #     code, code_stop_grad, _ = self.quantizer(z)
-    #     # Decode the code token
-    #     x_recon = self.decoder(self.post_quant(code_stop_grad))
-
-    #     # Commitment loss
-    #     commitment_loss = torch.mean((z - code.detach()) ** 2)
-    #     # Embedding loss
-    #     embedding_loss = torch.mean((code - z.detach()) ** 2)
-    #     # Total regularization loss
-    #     reg_loss = commitment_loss + embedding_loss
-
-    #     return x_recon, reg_loss
-
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         quant, diff = self.encode(x)
         dec = self.decode(quant)
@@ -503,21 +475,3 @@ class ViTVQ(nn.Module):
         dec = self.decoder(quant)
 
         return dec
-
-    # def encode_codes(self, x: torch.FloatTensor) -> torch.LongTensor:
-    #     h = self.encoder(x)
-    #     h = self.pre_quant(h)
-    #     _, _, codes = self.quantizer(h)
-
-    #     return codes
-
-    # def decode_codes(self, code: torch.LongTensor) -> torch.FloatTensor:
-    #     quant = self.quantizer.embedding(code)
-    #     quant = self.quantizer.norm(quant)
-
-    #     if self.quantizer.use_residual:
-    #         quant = quant.sum(-2)
-
-    #     dec = self.decode(quant)
-
-    #     return dec
