@@ -1,18 +1,23 @@
 import argparse
+import os
+import pickle
 import warnings
 from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.io
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.spectral_norm as spectral_norm
 import torch.optim as optim
 import torch.utils.data as data
+import torchvision
 import vit
 from einops import repeat
 from scipy.stats import norm
+from torch.autograd import Variable
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 from tqdm import tqdm, tqdm_notebook, trange
@@ -666,6 +671,451 @@ class VQGAN(object):
         return reconstructions
 
 
+class MNISTDataset(data.Dataset):
+    def __init__(self, data, transform=None):
+        self.data = data
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        image = self.data[index]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image
+
+
+def deconv(c_in, c_out, k_size, stride=2, pad=1, bn=True):
+    """Custom deconvolutional layer for simplicity."""
+    layers = []
+    layers.append(nn.ConvTranspose2d(c_in, c_out, k_size, stride, pad, bias=False))
+    if bn:
+        # TODO: this is equivalent to instance normalization for batch size 1,
+        # but convert it to nn.InstanceNorm2d just in case.
+        layers.append(nn.BatchNorm2d(c_out))
+    return nn.Sequential(*layers)
+
+
+def conv(c_in, c_out, k_size, stride=2, pad=1, bn=True):
+    """Custom convolutional layer for simplicity."""
+    layers = []
+    layers.append(nn.Conv2d(c_in, c_out, k_size, stride, pad, bias=False))
+    if bn:
+        # TODO: this is equivalent to instance normalization for batch size 1,
+        # but convert it to nn.InstanceNorm2d just in case.
+        layers.append(nn.BatchNorm2d(c_out))
+    return nn.Sequential(*layers)
+
+
+class G12(nn.Module):
+    """Generator for transfering from cmnist to mnist"""
+
+    def __init__(self, conv_dim=64):
+        super(G12, self).__init__()
+        # encoding blocks
+        self.conv1 = conv(3, conv_dim, 4)
+        self.conv2 = conv(conv_dim, conv_dim * 2, 4)
+
+        # residual blocks
+        self.conv3 = conv(conv_dim * 2, conv_dim * 2, 3, 1, 1)
+        self.conv4 = conv(conv_dim * 2, conv_dim * 2, 3, 1, 1)
+
+        # decoding blocks
+        self.deconv1 = deconv(conv_dim * 2, conv_dim, 4)
+        self.deconv2 = deconv(conv_dim, 1, 4, bn=False)
+
+    def forward(self, x):
+        # print("G12 x.shape:", x.shape)  # (?, 3, 28, 28)
+        out = F.leaky_relu(self.conv1(x), 0.05)  # (?, 64, 14, 14)
+        # print("G12 out.shape:", out.shape)
+        out = F.leaky_relu(self.conv2(out), 0.05)  # (?, 128, 7, 7)
+        # print("G12 out.shape:", out.shape)
+
+        out = F.leaky_relu(self.conv3(out), 0.05)  # ( " )
+        # print("G12 out.shape:", out.shape)
+        out = F.leaky_relu(self.conv4(out), 0.05)  # ( " )
+        # print("G12 out.shape:", out.shape)
+
+        out = F.leaky_relu(self.deconv1(out), 0.05)  # (?, 64, 14, 14)
+        # print("G12 out.shape:", out.shape)
+        out = F.tanh(self.deconv2(out))  # (?, 3, 28, 28)
+        # print("G12 out.shape:", out.shape)
+        return out
+
+
+class G21(nn.Module):
+    """Generator for transfering from mnist to cmnist"""
+
+    def __init__(self, conv_dim=64):
+        super(G21, self).__init__()
+        # encoding blocks
+        self.conv1 = conv(1, conv_dim, 4)
+        self.conv2 = conv(conv_dim, conv_dim * 2, 4)
+
+        # residual blocks
+        self.conv3 = conv(conv_dim * 2, conv_dim * 2, 3, 1, 1)
+        self.conv4 = conv(conv_dim * 2, conv_dim * 2, 3, 1, 1)
+
+        # decoding blocks
+        self.deconv1 = deconv(conv_dim * 2, conv_dim, 4)
+        self.deconv2 = deconv(conv_dim, 3, 4, bn=False)
+
+    def forward(self, x):
+        # print("G21 x.shape:", x.shape)  # (?, 1, 28, 28)
+        out = F.leaky_relu(self.conv1(x), 0.05)  # (?, 64, 14, 14)
+        # print("G21 out.shape:", out.shape)
+        out = F.leaky_relu(self.conv2(out), 0.05)  # (?, 128, 7, 7)
+        # print("G21 out.shape:", out.shape)
+
+        out = F.leaky_relu(self.conv3(out), 0.05)  # ( " )
+        # print("G21 out.shape:", out.shape)
+        out = F.leaky_relu(self.conv4(out), 0.05)  # ( " )
+        # print("G21 out.shape:", out.shape)
+
+        out = F.leaky_relu(self.deconv1(out), 0.05)  # (?, 64, 14, 14)
+        # print("G21 out.shape:", out.shape)
+        out = F.tanh(self.deconv2(out))  # (?, 3, 28, 28)
+        # print("G21 out.shape:", out.shape)
+        return out
+
+
+class D1(nn.Module):
+    """Discriminator for cmnist."""
+
+    def __init__(self, conv_dim=64, k_size=3, use_labels=False):
+        super(D1, self).__init__()
+        self.conv1 = conv(3, conv_dim, k_size, bn=False)
+        self.conv2 = conv(conv_dim, conv_dim * 2, k_size)
+        self.conv3 = conv(conv_dim * 2, conv_dim * 4, k_size)
+        n_out = 11 if use_labels else 1
+        self.fc = conv(conv_dim * 4, n_out, k_size, 1, 0, False)
+
+    def forward(self, x):
+        # print(x.shape)  # (?, 3, 28, 28)
+        out = F.leaky_relu(self.conv1(x), 0.05)  # (?, 64, 14, 14)
+        out = F.leaky_relu(self.conv2(out), 0.05)  # (?, 128, 7, 7)
+        out = F.leaky_relu(self.conv3(out), 0.05)  # (?, 256, 4, 4)
+        out = self.fc(out).squeeze()
+        return torch.sigmoid(out)
+
+
+class D2(nn.Module):
+    """Discriminator for mnist."""
+
+    def __init__(self, conv_dim=64, k_size=3, use_labels=False):
+        super(D2, self).__init__()
+        self.conv1 = conv(1, conv_dim, k_size, bn=False)
+        self.conv2 = conv(conv_dim, conv_dim * 2, k_size)
+        self.conv3 = conv(conv_dim * 2, conv_dim * 4, k_size)
+        n_out = 11 if use_labels else 1
+        self.fc = conv(conv_dim * 4, n_out, k_size, 1, 0, False)
+
+    def forward(self, x):
+        # print(x.shape)  # (?, 1, 28, 28)
+        out = F.leaky_relu(self.conv1(x), 0.05)  # (?, 64, 14, 14)
+        out = F.leaky_relu(self.conv2(out), 0.05)  # (?, 128, 7, 7)
+        out = F.leaky_relu(self.conv3(out), 0.05)  # (?, 256, 4, 4)
+        out = self.fc(out).squeeze()
+        return torch.sigmoid(out)  # (2, 2)
+
+
+def normalize_img(img):
+    return (img * 2) - 1
+
+
+def unnormalize_img(img):
+    return (img + 1) / 2
+
+
+class CycleGANSolver(object):
+    def __init__(
+        self,
+        mnist_data,
+        cmnist_data,
+        g_conv_dim: int = 64,
+        d_conv_dim: int = 64,
+        train_iters: int = 40_000,
+        lr: float = 0.0002,
+        beta1: float = 0.5,
+        beta2: float = 0.999,
+        log_step: int = 10,
+        num_samples: int = 20,
+        model_path: str = "cyclegan_models/",
+    ):
+        self.beta1 = beta1
+        self.beta2 = beta2
+
+        self.g_conv_dim = g_conv_dim
+        self.d_conv_dim = d_conv_dim
+        self.train_iters = train_iters
+        self.lr = lr
+        self.log_step = log_step
+        self.model_path = model_path
+
+        self.mnist_loader, self.cmnist_loader = self.get_loaders(
+            mnist_data, cmnist_data
+        )
+        self.sample_mnist_loader, self.sample_cmnist_loader = self.get_loaders(
+            mnist_data[:num_samples], cmnist_data[:num_samples]
+        )
+        self.build_model()
+
+    def get_loaders(self, mnist_data, cmnist_data):
+        """Creates the data loaders for the mnist and cmnist datasets."""
+        # mnist has 1 channel and cmnist has 3 channels
+        # mnist_transform = transforms.Compose(
+        #     [
+        #         transforms.Normalize((0.5,), (0.5,)),
+        #     ]
+        # )
+        # cmnist_transform = transforms.Compose(
+        #     [
+        #         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        #     ]
+        # )
+
+        # mnist_dataset = MNISTDataset(
+        #     torch.tensor(mnist_data).float(), transform=mnist_transform
+        # )
+        # cmnist_dataset = MNISTDataset(
+        #     torch.tensor(cmnist_data).float(), transform=cmnist_transform
+        # )
+
+        assert mnist_data.min() >= 0 and mnist_data.max() <= 1
+        # Normalize to [-1, 1].
+        mnist_data = normalize_img(mnist_data)
+        assert mnist_data.min() >= -1 and mnist_data.max() <= 1
+
+        assert cmnist_data.min() >= 0 and cmnist_data.max() <= 1
+        # Normalize to [-1, 1].
+        cmnist_data = normalize_img(cmnist_data)
+        assert cmnist_data.min() >= -1 and cmnist_data.max() <= 1
+
+        mnist_dataset = data.TensorDataset(torch.tensor(mnist_data).float())
+        cmnist_dataset = data.TensorDataset(torch.tensor(cmnist_data).float())
+
+        mnist_loader = data.DataLoader(
+            dataset=mnist_dataset,
+            batch_size=1,
+            shuffle=True,
+        )
+        cmnist_loader = data.DataLoader(
+            dataset=cmnist_dataset,
+            batch_size=1,
+            shuffle=True,
+        )
+
+        return mnist_loader, cmnist_loader
+
+    def build_model(self):
+        """Builds a generator and a discriminator."""
+        self.g12 = G12(conv_dim=self.g_conv_dim).to(ptu.device)
+        self.g21 = G21(conv_dim=self.g_conv_dim).to(ptu.device)
+        self.d1 = D1(conv_dim=self.d_conv_dim, use_labels=False).to(ptu.device)
+        self.d2 = D2(conv_dim=self.d_conv_dim, use_labels=False).to(ptu.device)
+
+        g_params = list(self.g12.parameters()) + list(self.g21.parameters())
+        d_params = list(self.d1.parameters()) + list(self.d2.parameters())
+
+        self.g_optimizer = optim.Adam(g_params, self.lr, [self.beta1, self.beta2])
+        self.d_optimizer = optim.Adam(d_params, self.lr, [self.beta1, self.beta2])
+
+    # TODO: delete?
+    def merge_images(self, sources, targets, k=10):
+        _, _, h, w = sources.shape
+        row = int(np.sqrt(self.batch_size))
+        merged = np.zeros([3, row * h, row * w * 2])
+        for idx, (s, t) in enumerate(zip(sources, targets)):
+            i = idx // row
+            j = idx % row
+            merged[:, i * h : (i + 1) * h, (j * 2) * h : (j * 2 + 1) * h] = s
+            merged[:, i * h : (i + 1) * h, (j * 2 + 1) * h : (j * 2 + 2) * h] = t
+        return merged.transpose(1, 2, 0)
+
+    def to_var(self, x):
+        """Converts numpy to variable."""
+        return ptu.tensor(x, requires_grad=True)
+
+    def to_data(self, x):
+        """Converts variable to numpy."""
+        return x.cpu().data.numpy()
+
+    def reset_grad(self):
+        """Zeros the gradient buffers."""
+        self.g_optimizer.zero_grad()
+        self.d_optimizer.zero_grad()
+
+    def train(self):
+        mnist_iter = iter(self.mnist_loader)
+        cmnist_iter = iter(self.cmnist_loader)
+        iter_per_epoch = min(len(mnist_iter), len(cmnist_iter))
+
+        # fixed mnist and cmnist for sampling
+        fixed_mnist = self.to_var(next(mnist_iter)[0])
+        fixed_cmnist = self.to_var(next(cmnist_iter)[0])
+
+        for step in range(self.train_iters + 1):
+            # reset data_iter for each epoch
+            if (step + 1) % iter_per_epoch == 0:
+                mnist_iter = iter(self.mnist_loader)
+                cmnist_iter = iter(self.cmnist_loader)
+
+            # load svhn and mnist dataset
+            mnist = ptu.tensor(next(mnist_iter)[0])
+            cmnist = ptu.tensor(next(cmnist_iter)[0])
+            # svhn, s_labels = mnist_iter.next()
+            # svhn, s_labels = self.to_var(svhn), self.to_var(s_labels).long().squeeze()
+            # mnist, m_labels = cmnist_iter.next()
+            # mnist, m_labels = self.to_var(mnist), self.to_var(m_labels)
+
+            # ============ train D ============#
+
+            # train with real images
+            self.reset_grad()
+            # print("cmnist.shape:", cmnist.shape)
+            d1_cmnist_pred = self.d1(cmnist)
+            # print("d1_cmnist_pred.shape:", d1_cmnist_pred.shape)
+            d1_loss = torch.mean((d1_cmnist_pred - 1) ** 2)
+
+            d2_mnist_pred = self.d2(mnist)
+            d2_loss = torch.mean((d2_mnist_pred - 1) ** 2)
+
+            d_cmnist_loss = d1_loss
+            d_mnist_loss = d2_loss
+            d_real_loss = d1_loss + d2_loss
+            d_real_loss.backward()
+            self.d_optimizer.step()
+
+            # train with fake images
+            self.reset_grad()
+            fake_mnist = self.g12(cmnist)
+            d2_fake_mnist_pred = self.d2(fake_mnist)
+            d2_loss = torch.mean(d2_fake_mnist_pred**2)
+
+            fake_cmnist = self.g21(mnist)
+            d1_fake_cmnist_pred = self.d1(fake_cmnist)
+            d1_loss = torch.mean(d1_fake_cmnist_pred**2)
+
+            d_fake_loss = d1_loss + d2_loss
+            d_fake_loss.backward()
+            self.d_optimizer.step()
+
+            # ============ train G ============#
+
+            # train cmnist-mnist-cmnist cycle
+            self.reset_grad()
+            fake_mnist = self.g12(cmnist)
+            d2_fake_mnist_pred = self.d2(fake_mnist)
+            recon_cmnist = self.g21(fake_mnist)
+            # GAN loss
+            backward_gan_loss = torch.mean((d2_fake_mnist_pred - 1) ** 2)
+            # Reconstruction loss
+            backward_recon_loss = torch.mean((cmnist - recon_cmnist) ** 2)
+            backward_g_loss = backward_gan_loss + backward_recon_loss
+            backward_g_loss.backward()
+            self.g_optimizer.step()
+
+            # train mnist-cmnist-mnist cycle
+            self.reset_grad()
+            fake_cmnist = self.g21(mnist)
+            d1_fake_cmnist_pred = self.d1(fake_cmnist)
+            recon_mnist = self.g12(fake_cmnist)
+            forward_gan_loss = torch.mean((d1_fake_cmnist_pred - 1) ** 2)
+            forward_recon_loss = torch.mean((mnist - recon_mnist) ** 2)
+            forward_g_loss = forward_gan_loss + forward_recon_loss
+            forward_g_loss.backward()
+            self.g_optimizer.step()
+
+            # print the log info
+            if (step + 1) % self.log_step == 0:
+                print("Step [%d/%d]" % (step + 1, self.train_iters))
+                print(
+                    "forward_g_loss: %.4f, forward_gan_loss: %.4f, forward_recon_loss: %.4f"
+                    % (
+                        forward_g_loss.item(),
+                        forward_gan_loss.item(),
+                        forward_recon_loss.item(),
+                    )
+                )
+                print(
+                    "backward_g_loss: %.4f, backward_gan_loss: %.4f, backward_recon_loss: %.4f"
+                    % (
+                        backward_g_loss.item(),
+                        backward_gan_loss.item(),
+                        backward_recon_loss.item(),
+                    )
+                )
+                print(
+                    "d_real_loss: %.4f, d_cmnist_loss: %.4f, d_mnist_loss: %.4f, "
+                    "d_fake_loss: %.4f"
+                    % (
+                        d_real_loss.item(),
+                        d_cmnist_loss.item(),
+                        d_mnist_loss.item(),
+                        d_fake_loss.item(),
+                    )
+                )
+                print()
+
+    def sample(self):
+        mnist_samples = []
+        fake_cmnist_samples = []
+        mnist_recon_samples = []
+        for (mnist,) in self.sample_mnist_loader:
+            mnist = mnist.to(ptu.device)
+            fake_cmnist = self.g21(mnist)
+            mnist_recon = self.g12(fake_cmnist)
+            mnist_samples.append(unnormalize_img(mnist.detach().cpu().numpy()))
+            fake_cmnist_samples.append(
+                unnormalize_img(fake_cmnist.detach().cpu().numpy())
+            )
+            mnist_recon_samples.append(
+                unnormalize_img(mnist_recon.detach().cpu().numpy())
+            )
+
+        cmnist_samples = []
+        fake_mnist_samples = []
+        cmnist_recon_samples = []
+        for (cmnist,) in self.sample_cmnist_loader:
+            cmnist = cmnist.to(ptu.device)
+            fake_mnist = self.g12(cmnist)
+            cmnist_recon = self.g21(fake_mnist)
+            cmnist_samples.append(unnormalize_img(cmnist.detach().cpu().numpy()))
+            fake_mnist_samples.append(
+                unnormalize_img(fake_mnist.detach().cpu().numpy())
+            )
+            cmnist_recon_samples.append(
+                unnormalize_img(cmnist_recon.detach().cpu().numpy())
+            )
+
+        mnist_samples = np.concatenate(mnist_samples, axis=0).transpose(0, 2, 3, 1)
+        fake_cmnist_samples = np.concatenate(fake_cmnist_samples, axis=0).transpose(
+            0, 2, 3, 1
+        )
+        mnist_recon_samples = np.concatenate(mnist_recon_samples, axis=0).transpose(
+            0, 2, 3, 1
+        )
+        cmnist_samples = np.concatenate(cmnist_samples, axis=0).transpose(0, 2, 3, 1)
+        fake_mnist_samples = np.concatenate(fake_mnist_samples, axis=0).transpose(
+            0, 2, 3, 1
+        )
+        cmnist_recon_samples = np.concatenate(cmnist_recon_samples, axis=0).transpose(
+            0, 2, 3, 1
+        )
+
+        return (
+            mnist_samples,
+            fake_cmnist_samples,
+            mnist_recon_samples,
+            cmnist_samples,
+            fake_mnist_samples,
+            cmnist_recon_samples,
+        )
+
+
 def q2(train_data, load=False):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
@@ -730,6 +1180,28 @@ def q3b(train_data, val_data, reconstruct_data):
     )
 
 
+def q4(mnist_data, cmnist_data):
+    """
+    mnist_data: An (60000, 1, 28, 28) numpy array of black and white images with values in [0, 1]
+    cmnist_data: An (60000, 3, 28, 28) numpy array of colored images with values in [0, 1]
+
+    Returns
+    - a (20, 28, 28, 1) numpy array of real MNIST digits, in [0, 1]
+    - a (20, 28, 28, 3) numpy array of translated Colored MNIST digits, in [0, 1]
+    - a (20, 28, 28, 1) numpy array of reconstructed MNIST digits, in [0, 1]
+
+    - a (20, 28, 28, 3) numpy array of real Colored MNIST digits, in [0, 1]
+    - a (20, 28, 28, 1) numpy array of translated MNIST digits, in [0, 1]
+    - a (20, 28, 28, 3) numpy array of reconstructed Colored MNIST digits, in [0, 1]
+    """
+    num_epochs = 5
+    solver = CycleGANSolver(
+        mnist_data, cmnist_data, train_iters=num_epochs * len(mnist_data), log_step=1000
+    )
+    solver.train()
+    return solver.sample()
+
+
 def main(args):
     question = args.question
     part = args.part
@@ -738,13 +1210,15 @@ def main(args):
         q2_save_results(q2)
     elif question == 3 and part == "b":
         q3_save_results(q3b, "b")
+    elif question == 4:
+        q4_save_results(q4)
     else:
         raise NotImplementedError(f"Question {question} is not implemented")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Homework 3")
-    parser.add_argument("question", type=int, choices=[1, 2, 3], help="Question number")
+    parser.add_argument("question", type=int, choices=[1, 2, 3, 4], help="Question number")
     parser.add_argument(
         "-p", "--part", choices=["a", "b", "c"], help="Part of the question"
     )
