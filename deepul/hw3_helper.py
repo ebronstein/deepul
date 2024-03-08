@@ -241,9 +241,11 @@ def q4_save_results(fn):
     mnist_reconstructions = np.concatenate([m1, c1, m2], axis=0)
     colored_mnist_reconstructions = np.concatenate([c2, m3, c3], axis=0)
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
     show_samples(mnist_reconstructions * 255.0, nrow=20,
-                 fname='figures/q4_mnist.png',
+                 fname=f'figures/q4_mnist_{timestamp}.png',
                  title=f'Source domain: MNIST')
     show_samples(colored_mnist_reconstructions * 255.0, nrow=20,
-                 fname='figures/q4_colored_mnist.png',
+                 fname=f'figures/q4_colored_mnist_{timestamp}.png',
                  title=f'Source domain: Colored MNIST')
