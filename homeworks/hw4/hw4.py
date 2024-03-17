@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -286,6 +287,12 @@ class DiffusionModel(object):
             self.optimizer, n_warmup_steps, n_iters
         )
 
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path):
+        self.model.load_state_dict(torch.load(path))
+
     def create_loaders(self, train_data, test_data, batch_size):
         train_data = torch.tensor(train_data, dtype=torch.float32)
         test_data = torch.tensor(test_data, dtype=torch.float32)
@@ -341,7 +348,7 @@ class DiffusionModel(object):
 
         return total_loss / len(test_loader.dataset)
 
-    def train(self, log_freq=100):
+    def train(self, log_freq=100, save_freq: int = 10, save_dir=None):
         train_losses = []
         test_losses = [self.eval(self.test_loader)]
 
@@ -367,6 +374,12 @@ class DiffusionModel(object):
 
             train_losses.extend(epoch_train_losses)
             test_losses.append(self.eval(self.test_loader))
+
+            if save_dir is not None and epoch % save_freq == 0:
+                self.save(os.path.join(save_dir, f"diffusion_model_epoch_{epoch}.pt"))
+
+        if save_dir is not None:
+            self.save(os.path.join(save_dir, "diffusion_model_final.pt"))
 
         return train_losses, test_losses
 
@@ -468,7 +481,12 @@ def q2(train_data, test_data):
         n_epochs=60,
         n_warmup_steps=100,
     )
-    train_losses, test_losses = dmodel.train()
+
+    save_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q2"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    train_losses, test_losses = dmodel.train(save_dir=save_dir)
 
     return_steps = np.logspace(0, np.log10(512), num=10).astype(int)
     all_samples = []
@@ -477,7 +495,7 @@ def q2(train_data, test_data):
         samples = samples.transpose(0, 1, 3, 4, 2)
         all_samples.append(samples)
 
-    all_samples = np.concatenate(all_samples, axis=1)
+    all_samples = np.concatenate(all_samples, axis=0)
     all_samples = unnorm_img(all_samples)
 
     return train_losses, test_losses, all_samples
