@@ -127,14 +127,11 @@ class UNet(nn.Module):
         )
         self.initial_conv = nn.Conv2d(in_channels, hidden_dims[0], 3, padding=1)
         self.down_blocks = nn.ModuleList()
-        self.downsample_layers = nn.ModuleList()
         self.up_blocks = nn.ModuleList()
-        self.upsample_layers = nn.ModuleList()
 
         # Downsample path
-        # TODO: make this match pseudocode. Don't downsample at the last (deepest)
-        # layer. There should be one downsample block per hidden_dim (except the)
-        # last one, and there should be blocks_per_dim number of residual blocks
+        # There should be one downsample block per hidden_dim except the last
+        # one, and there should be blocks_per_dim number of residual blocks
         # per layer.
         prev_ch = hidden_dims[0]
         # After the double for loop, down_block_chans = [hidden_dims[0]] flatten([[hd] * (blocks_per_dim + 1) for hd in hidden_dims[:-1]]) + [hidden_dims[-1]] * blocks_per_dim
@@ -149,7 +146,7 @@ class UNet(nn.Module):
                 prev_ch = hidden_dim
                 down_block_chans.append(prev_ch)
             if i != len(hidden_dims) - 1:
-                self.downsample_layers.append(Downsample(prev_ch))
+                self.down_blocks.append(Downsample(prev_ch))
                 down_block_chans.append(prev_ch)
 
         # print("After downsample path:")
@@ -164,17 +161,18 @@ class UNet(nn.Module):
         )
 
         # Upsample path
-        # TODO: make this match pseudocode. Don't upsample at the first (deepest)
-        # layer, and there should be an upsampling block per resblock (excluding
-        # the first layer).
+        # Don't upsample at the last (shallowest) layer, and there should be an
+        # upsampling block per resblock excluding the last (shallowest) layer.
         # After the double for loop, self.up_blocks has len(hidden_dims) *
         # blocks_per_dim resblocks.
         # self.upsample_layers has len(hidden_dims) - 1 layers.
+        # i, hidden_dim = (3, 512), (2, 256), (1, 128), (0, 64)
         for i, hidden_dim in list(enumerate(hidden_dims))[::-1]:
             for j in range(
                 blocks_per_dim + 1
             ):  # +1 for the additional block in upsampling
                 dch = down_block_chans.pop()
+                # print("Popped dch:", dch)
                 # NOTE: prev_ch + dch is equivalent to prev_ch * 2.
                 self.up_blocks.append(
                     ResidualBlock(prev_ch + dch, hidden_dim, self.temb_channels)
@@ -183,7 +181,10 @@ class UNet(nn.Module):
                 # Only append an upsampling layer if we're not at the deepest
                 # layer and we have added all the resblocks for that layer.
                 if i != 0 and j == blocks_per_dim:
-                    self.upsample_layers.append(Upsample(prev_ch))
+                    self.up_blocks.append(Upsample(prev_ch))
+
+        # print("After upsample path:")
+        # print("down_block_chans:", down_block_chans)
 
         self.final_norm = nn.GroupNorm(num_groups=8, num_channels=prev_ch)
         self.final_act = nn.SiLU()
@@ -197,38 +198,31 @@ class UNet(nn.Module):
         hs = [h]
 
         # Downsample
-        for i in range(len(self.hidden_dims)):
-            for j in range(self.blocks_per_dim):
-                h = self.down_blocks[i * self.blocks_per_dim + j](h, temb)
-                hs.append(h)
-            if i != len(self.hidden_dims) - 1:
-                h = self.downsample_layers[i](h)
-                hs.append(h)
+        for block in self.down_blocks:
+            if isinstance(block, ResidualBlock):
+                h = block(h, temb)
+            else:
+                h = block(h)
+
+            hs.append(h)
+
+        # print("After downsample path:")
+        # print("len(hs):", len(hs))
 
         # Bottleneck
         for block in self.mid_blocks:
             h = block(h, temb)
 
         # Upsample
-        # print("Upsampling")
-        for i, hidden_dim in list(enumerate(self.hidden_dims))[::-1]:
-            for j in range(self.blocks_per_dim + 1):
-                # print(f"i={i}, j={j}")
-                skip_connection = hs.pop()
-                # print("h:", h.shape)
-                # print("skip_connection:", skip_connection.shape)
-                h = torch.cat([h, skip_connection], dim=1)
-                # print("h:", h.shape)
-                up_block_index = -(i + 1) * (self.blocks_per_dim + 1) + j
-                # print("up_block_index:", up_block_index)
-                h = self.up_blocks[up_block_index](h, temb)
-                # print("h:", h.shape)
-                if i != 0 and j == self.blocks_per_dim:
-                    # Negate the index because we're going backwards.
-                    h = self.upsample_layers[-i](h)
-                    # print("i != 0 and j == self.blocks_per_dim")
-                    # print("h:", h.shape)
-                # print()
+        for block in self.up_blocks:
+            if isinstance(block, ResidualBlock):
+                h = torch.cat([h, hs.pop()], dim=1)
+                h = block(h, temb)
+            else:
+                h = block(h)
+
+        # print("After upsample path:")
+        # print("len(hs):", len(hs))
 
         h = self.final_norm(h)
         h = self.final_act(h)
@@ -262,8 +256,8 @@ def warmup_cosine_decay_scheduler(optimizer, warmup_steps, total_steps):
 class DiffusionModel(object):
     def __init__(
         self,
-        train_data,
-        test_data,
+        train_data=None,
+        test_data=None,
         model=None,
         batch_size=1024,
         n_epochs=100,
@@ -279,11 +273,15 @@ class DiffusionModel(object):
             self.train_loader = train_data
             self.test_loader = test_data
             train_data_shape = None
-        else:
+        elif train_data is not None:
+            assert test_data is not None
             train_data_shape = train_data.shape
             self.train_loader, self.test_loader = self.create_loaders(
                 train_data, test_data, batch_size
             )
+        else:
+            self.train_loader = None
+            self.test_loader = None
 
         if model is None:
             assert train_data_shape is not None and len(train_data_shape) == 2
@@ -307,11 +305,14 @@ class DiffusionModel(object):
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
 
         # LR scheduler
-        n_iters_per_epoch = len(self.train_loader)
-        n_iters = n_epochs * n_iters_per_epoch
-        self.scheduler = warmup_cosine_decay_scheduler(
-            self.optimizer, n_warmup_steps, n_iters
-        )
+        if self.train_loader is not None:
+            n_iters_per_epoch = len(self.train_loader)
+            n_iters = n_epochs * n_iters_per_epoch
+            self.scheduler = warmup_cosine_decay_scheduler(
+                self.optimizer, n_warmup_steps, n_iters
+            )
+        else:
+            self.scheduler = None
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
@@ -444,13 +445,28 @@ def ddpm_update(x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=None):
     return x_tm1
 
 
-def sample(model, num_samples, return_steps, data_shape, labels=None, clip=None):
+def sample(
+    model,
+    num_samples,
+    return_steps,
+    data_shape,
+    labels=None,
+    clip=None,
+    cfg_w=None,
+    null_class=None,
+):
     model.model.eval()
     if not isinstance(data_shape, (list, tuple)):
         data_shape = (data_shape,)
     x_shape = (num_samples,) + tuple(data_shape)
     exp_shape = [num_samples] + [1] * len(data_shape)
     samples = []  # [num_labels, len(return_steps), num_samples, *data_shape]
+
+    if cfg_w is not None:
+        assert labels is not None
+        assert null_class is not None
+        with torch.no_grad():
+            null_class = ptu.tensor(null_class, dtype=torch.int32).expand(num_samples)
 
     if labels is None:
         labels = [None]
@@ -480,6 +496,12 @@ def sample(model, num_samples, return_steps, data_shape, labels=None, clip=None)
                     eps_hat = model.model_fn(
                         x, label, t.expand(num_samples), **model_kwargs
                     )
+                    if cfg_w is not None:
+                        eps_hat_null = model.model_fn(
+                            x, null_class, t.expand(num_samples), **model_kwargs
+                        )
+                        eps_hat = eps_hat_null + cfg_w * (eps_hat - eps_hat_null)
+
                     x = ddpm_update(
                         x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=clip
                     )
@@ -611,7 +633,7 @@ class CustomImageDataset(torch.utils.data.Dataset):
         return image, label
 
 
-class MLP(nn.Module):
+class DiTMLP(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.fc1 = nn.Linear(hidden_size, 4 * hidden_size)
@@ -627,7 +649,7 @@ class MLP(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, seq_len):
+    def __init__(self, d_model, num_heads, seq_len, ar_mask: bool = False):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -640,10 +662,13 @@ class MultiHeadAttention(nn.Module):
 
         self.dense = nn.Linear(d_model, d_model)
 
-        # Create a mask for autoregressive property.
-        # 0 means valid position, 1 means masked position.
-        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1)
-        mask = mask.masked_fill(mask == 1, -1e9)
+        if ar_mask:
+            # Create a mask for autoregressive property.
+            # 0 means valid position, 1 means masked position.
+            mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1)
+            mask = mask.masked_fill(mask == 1, -1e9)
+        else:
+            mask = torch.zeros(seq_len, seq_len)
         self.register_buffer("mask", mask)
 
         self.cache = None
@@ -742,7 +767,7 @@ class DiTBlock(nn.Module):
         self.layer_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False)
         self.layer_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False)
         self.mha = MultiHeadAttention(hidden_size, num_heads, seq_len)
-        self.mlp = MLP(hidden_size)
+        self.mlp = DiTMLP(hidden_size)
 
     def forward(self, x, c):
         c = F.silu(c)
@@ -797,7 +822,8 @@ class DiT(nn.Module):
     def forward(self, x, y, t, training=True):
         # B, D, H, W = x.shape
         # print("x:", x.shape)
-        x = patchify_flatten(x, self.patch_size)  # [B, L = H // P * W // P, P*P*D]
+        # [B, L = H // P * W // P, P*P*D] = [B, 16, 16]
+        x = patchify_flatten(x, self.patch_size)
         # print("x:", x.shape)
         x = self.proj(x)  # [B, L, hidden_size]
         # print("x:", x.shape)
