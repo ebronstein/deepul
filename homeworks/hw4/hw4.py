@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -349,6 +350,12 @@ class DiffusionModel(object):
         return total_loss / len(test_loader.dataset)
 
     def train(self, log_freq=100, save_freq: int = 10, save_dir=None):
+        if save_dir is not None:
+            # Get the current timestamp and save it as a new directory.
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            save_dir = os.path.join(save_dir, timestamp)
+            os.makedirs(save_dir)
+
         train_losses = []
         test_losses = [self.eval(self.test_loader)]
 
@@ -380,44 +387,54 @@ class DiffusionModel(object):
 
         if save_dir is not None:
             self.save(os.path.join(save_dir, "diffusion_model_final.pt"))
+            np.save(os.path.join(save_dir, "train_losses.npy"), train_losses)
+            np.save(os.path.join(save_dir, "test_losses.npy"), test_losses)
 
         return train_losses, test_losses
 
-    def ddpm_update(self, x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1):
-        eta_t = sigma_tm1 / sigma_t * torch.sqrt(1 - alpha_t.pow(2) / alpha_tm1.pow(2))
-        update_term = alpha_tm1 * (x - sigma_t * eps_hat) / alpha_t
-        noise_term = (
-            torch.sqrt(torch.clamp(sigma_tm1.pow(2) - eta_t.pow(2), min=0)) * eps_hat
-        )
-        random_noise = eta_t * torch.randn_like(x, device=ptu.device)
-        x_tm1 = update_term + noise_term + random_noise
-        return x_tm1
+
+def ddpm_update(x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=None):
+    eta_t = sigma_tm1 / sigma_t * torch.sqrt(1 - alpha_t.pow(2) / alpha_tm1.pow(2))
+    x_tm1_mean = (x - sigma_t * eps_hat) / alpha_t
+    if clip is not None:
+        min, max = clip
+        x_tm1_mean = torch.clamp(x_tm1_mean, min, max)
+    update_term = alpha_tm1 * x_tm1_mean
+    noise_term = (
+        torch.sqrt(torch.clamp(sigma_tm1.pow(2) - eta_t.pow(2), min=0)) * eps_hat
+    )
+    random_noise = eta_t * torch.randn_like(x, device=ptu.device)
+    x_tm1 = update_term + noise_term + random_noise
+    return x_tm1
 
 
-def sample(model, num_samples, num_steps, return_steps, data_shape):
+def sample(model, num_samples, return_steps, data_shape, clip=None):
     model.model.eval()
-    # Original: ts = np.linspace(1 - 1e-4, 1e-4, num_steps + 1)
-    ts = np.linspace(1 - 1e-4, 0, num_steps + 1)
     if not isinstance(data_shape, (list, tuple)):
         data_shape = (data_shape,)
     x_shape = (num_samples,) + tuple(data_shape)
-    x = torch.randn(x_shape, device=ptu.device)
     exp_shape = [num_samples] + [1] * len(data_shape)
-
     samples = []
-    for i in range(num_steps):
-        t = ptu.tensor([ts[i]], dtype=torch.float32)
-        tm1 = ptu.tensor([ts[i + 1]], dtype=torch.float32)
 
-        alpha_t = model.get_alpha(t).expand(exp_shape)
-        alpha_tm1 = model.get_alpha(tm1).expand(exp_shape)
-        sigma_t = model.get_sigma(t).expand(exp_shape)
-        sigma_tm1 = model.get_sigma(tm1).expand(exp_shape)
+    for num_steps in return_steps:
+        ts = np.linspace(1 - 1e-4, 1e-4, num_steps + 1)
 
-        eps_hat = model.model(x, t.expand(num_samples))
-        x = model.ddpm_update(x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1)
+        with torch.no_grad():
+            x = torch.randn(x_shape, device=ptu.device)
+            for i in range(num_steps):
+                t = ptu.tensor([ts[i]], dtype=torch.float32)
+                tm1 = ptu.tensor([ts[i + 1]], dtype=torch.float32)
 
-        if i + 1 in return_steps:
+                alpha_t = model.get_alpha(t).expand(exp_shape)
+                alpha_tm1 = model.get_alpha(tm1).expand(exp_shape)
+                sigma_t = model.get_sigma(t).expand(exp_shape)
+                sigma_tm1 = model.get_sigma(tm1).expand(exp_shape)
+
+                eps_hat = model.model(x, t.expand(num_samples))
+                x = ddpm_update(
+                    x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=clip
+                )
+
             samples.append(x.cpu().detach().numpy())
 
     samples = np.array(samples)
@@ -442,16 +459,27 @@ def q1(train_data, test_data):
     model = DiffusionModel(
         train_data, test_data, batch_size=1024, n_epochs=100, n_warmup_steps=100
     )
-    train_losses, test_losses = model.train()
+
+    # Load
+    load_dir = (
+        "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q1/2024-03-18_10-27-15"
+    )
+    model.load(os.path.join(load_dir, "diffusion_model_final.pt"))
+    train_losses = np.load(os.path.join(load_dir, "train_losses.npy"))
+    test_losses = np.load(os.path.join(load_dir, "test_losses.npy"))
+
+    # Save
+    # save_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q1"
+    # train_losses, test_losses = model.train(save_dir=save_dir)
 
     return_steps = np.logspace(0, np.log10(512), num=9).astype(int)
-    all_samples = sample(model, 2000, 512, return_steps, train_data.shape[1])
+    all_samples = sample(model, 2000, return_steps, train_data.shape[1:])
     all_samples = unnorm_mean_std(all_samples, mean, std)
 
     return train_losses, test_losses, all_samples
 
 
-def q2(train_data, test_data):
+def q2(train_data, test_data, load=False):
     """
     train_data: A (50000, 32, 32, 3) numpy array of images in [0, 1]
     test_data: A (10000, 32, 32, 3) numpy array of images in [0, 1]
@@ -482,23 +510,24 @@ def q2(train_data, test_data):
         n_warmup_steps=100,
     )
 
-    save_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q2"
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    train_losses, test_losses = dmodel.train(save_dir=save_dir)
+    if load:
+        load_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q2/2024-03-18_16-32-33"
+        dmodel.load(os.path.join(load_dir, "diffusion_model_final.pt"))
+        train_losses = np.load(os.path.join(load_dir, "train_losses.npy"))
+        test_losses = np.load(os.path.join(load_dir, "test_losses.npy"))
+    else:
+        save_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q2"
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        train_losses, test_losses = dmodel.train(save_dir=save_dir)
 
     return_steps = np.logspace(0, np.log10(512), num=10).astype(int)
-    all_samples = []
-    for _ in range(5):
-        samples = sample(dmodel, 2, 512, return_steps, train_data.shape[1:])
-        samples = samples.transpose(0, 1, 3, 4, 2)
-        all_samples.append(samples)
+    clip = (-1, 1)
+    samples = sample(dmodel, 10, return_steps, train_data.shape[1:], clip=clip)
+    samples = samples.transpose(0, 1, 3, 4, 2)
+    samples = unnorm_img(samples)
 
-    all_samples = np.concatenate(all_samples, axis=0)
-    all_samples = unnorm_img(all_samples)
-
-    return train_losses, test_losses, all_samples
+    return train_losses, test_losses, samples
 
 
 if __name__ == "__main__":
