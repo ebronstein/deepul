@@ -1,4 +1,5 @@
 import argparse
+import functools
 import os
 from datetime import datetime
 
@@ -381,7 +382,9 @@ class DiffusionModel(object):
 
         return total_loss / len(test_loader.dataset)
 
-    def train(self, log_freq=100, save_freq: int = 10, save_dir=None):
+    def train(
+        self, log_freq=100, save_freq: int = 10, process_labels_fn=None, save_dir=None
+    ):
         if save_dir is not None:
             # Get the current timestamp and save it as a new directory.
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -400,6 +403,8 @@ class DiffusionModel(object):
                 if self.has_labels:
                     x, labels = x
                     labels = labels.to(ptu.device)
+                    if process_labels_fn is not None:
+                        labels = process_labels_fn(labels)
                 else:
                     labels = None
                 x = x.to(ptu.device)
@@ -430,7 +435,9 @@ class DiffusionModel(object):
         return train_losses, test_losses
 
 
-def ddpm_update(x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=None):
+def ddpm_update(
+    x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=None, clip_noise=None
+):
     eta_t = sigma_tm1 / sigma_t * torch.sqrt(1 - alpha_t.pow(2) / alpha_tm1.pow(2))
     x_tm1_mean = (x - sigma_t * eps_hat) / alpha_t
     if clip is not None:
@@ -440,7 +447,10 @@ def ddpm_update(x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=None):
     noise_term = (
         torch.sqrt(torch.clamp(sigma_tm1.pow(2) - eta_t.pow(2), min=0)) * eps_hat
     )
-    random_noise = eta_t * torch.randn_like(x, device=ptu.device)
+    random_noise = torch.randn_like(x, device=ptu.device)
+    if clip_noise:
+        random_noise = torch.clamp(random_noise, clip_noise[0], clip_noise[1])
+    random_noise *= eta_t
     x_tm1 = update_term + noise_term + random_noise
     return x_tm1
 
@@ -452,6 +462,7 @@ def sample(
     data_shape,
     labels=None,
     clip=None,
+    clip_noise=None,
     cfg_w=None,
     null_class=None,
 ):
@@ -503,7 +514,14 @@ def sample(
                         eps_hat = eps_hat_null + cfg_w * (eps_hat - eps_hat_null)
 
                     x = ddpm_update(
-                        x, eps_hat, alpha_t, alpha_tm1, sigma_t, sigma_tm1, clip=clip
+                        x,
+                        eps_hat,
+                        alpha_t,
+                        alpha_tm1,
+                        sigma_t,
+                        sigma_tm1,
+                        clip=clip,
+                        clip_noise=clip_noise,
                     )
 
                 label_samples.append(x.cpu().detach().numpy())
@@ -763,27 +781,52 @@ class FinalLayer(nn.Module):
 class DiTBlock(nn.Module):
     def __init__(self, hidden_size, num_heads, seq_len):
         super().__init__()
-        self.linear = nn.Linear(hidden_size, 6 * hidden_size)
+
+        # One linear layer for shift, scale, and gating.
+        # self.linear = nn.Linear(hidden_size, 6 * hidden_size)
+
+        # Separate linear layers for shift, scale and gating.
+        self.shift_scale_linear = nn.Linear(hidden_size, 4 * hidden_size)
+        self.gate_linear = nn.Linear(hidden_size, 2 * hidden_size)
+        # Initialize to zeros
+        nn.init.zeros_(self.shift_scale_linear.weight)
+        nn.init.zeros_(self.gate_linear.weight)
+
         self.layer_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False)
         self.layer_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False)
         self.mha = MultiHeadAttention(hidden_size, num_heads, seq_len)
         self.mlp = DiTMLP(hidden_size)
 
     def forward(self, x, c):
+        # print("DiTBlock.forward")
+        # print("c:", c.shape)
         c = F.silu(c)
-        c = self.linear(c)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = c.chunk(
-            6, dim=1
-        )
 
-        # print("x:", x.shape)
+        # c = self.linear(c)
+        # print("c:", c.shape)
+        # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = c.chunk(
+        #     6, dim=1
+        # )
+
+        shift_scale = self.shift_scale_linear(c)
+        shift_msa, scale_msa, shift_mlp, scale_mlp = shift_scale.chunk(4, dim=1)
+        gate = self.gate_linear(c)
+        gate_msa, gate_mlp = gate.chunk(2, dim=1)
+
         h = self.layer_norm1(x)
+        # print("h:", h.shape)
         h = modulate(h, shift_msa, scale_msa)
+        # print("h:", h.shape)
+        # print("mha(h, h, h):", self.mha(h, h, h).shape)
         x = x + gate_msa.unsqueeze(1) * self.mha(h, h, h)
+        # print("x:", x.shape)
 
         h = self.layer_norm2(x)
+        # print("h:", h.shape)
         h = modulate(h, shift_mlp, scale_mlp)
+        # print("h:", h.shape)
         x = x + gate_mlp.unsqueeze(1) * self.mlp(h)
+        # print("x:", x.shape)
 
         return x
 
@@ -798,21 +841,45 @@ class DiT(nn.Module):
         num_layers=12,
         num_classes=10,
         dropout_prob=0.1,
+        patch_conv=False,
     ):
         super().__init__()
         self.patch_size = patch_size
         self.hidden_size = hidden_size
         _, D, H, W = input_shape
         self.H, self.W, self.D = H, W, D
-        L = patch_size**2 * D
-        self.proj = nn.Linear(L, hidden_size)
+
+        if patch_conv:
+            self.patch_conv = nn.Conv2d(
+                D, hidden_size, kernel_size=patch_size, stride=patch_size
+            )
+
+            def patchify_fn(x):
+                x = self.patch_conv(x)  # [B, hidden_size, H // P, W // P]
+                x = x.flatten(2, 3)  # [B, hidden_size, L = H // P * W // P]
+                x = x.permute(0, 2, 1)  # [B, L, hidden_size]
+                return x
+
+        else:
+            flat_patch_dim = patch_size**2 * D
+            self.proj = nn.Linear(flat_patch_dim, hidden_size)
+
+            def patchify_fn(x):
+                # [B, L = H // P * W // P, P*P*D] = [B, 16, 16]
+                x = patchify_flatten(x, self.patch_size)
+                # print("x:", x.shape)
+                x = self.proj(x)  # [B, L, hidden_size]
+                return x
+
+        self.patchify_fn = patchify_fn
+
         pos_embed = get_2d_sincos_pos_embed(hidden_size, H // patch_size)
         pos_embed = ptu.tensor(pos_embed, dtype=torch.float32)
         self.register_buffer("pos_embed", pos_embed)
 
         self.num_classes = num_classes
         self.embedding = nn.Embedding(num_classes + 1, hidden_size)
-        seq_len = patch_size**2 * D
+        seq_len = H // patch_size * W // patch_size
         self.blocks = nn.ModuleList(
             [DiTBlock(hidden_size, num_heads, seq_len) for _ in range(num_layers)]
         )
@@ -822,20 +889,33 @@ class DiT(nn.Module):
     def forward(self, x, y, t, training=True):
         # B, D, H, W = x.shape
         # print("x:", x.shape)
-        # [B, L = H // P * W // P, P*P*D] = [B, 16, 16]
-        x = patchify_flatten(x, self.patch_size)
-        # print("x:", x.shape)
-        x = self.proj(x)  # [B, L, hidden_size]
-        # print("x:", x.shape)
+
+        x = self.patchify_fn(x)
+
+        # Patchify with a linear projection.
+        # # [B, L = H // P * W // P, P*P*D] = [B, 16, 16]
+        # x = patchify_flatten(x, self.patch_size)
+        # # print("x:", x.shape)
+        # x = self.proj(x)  # [B, L, hidden_size]
+        # # print("x:", x.shape)
+
+        # # Patchify with conv.
+        # x = self.patch_conv(x)  # [B, hidden_size, H // P, W // P]
+        # x = x.flatten(2, 3)  # [B, hidden_size, L = H // P * W // P]
+        # x = x.permute(0, 2, 1)  # [B, L, hidden_size]
+
         x += self.pos_embed.unsqueeze(0)  # [B, L, hidden_size]
         # print("x:", x.shape)
 
         t_emb = timestep_embedding(t, self.hidden_size)
-        if training:
-            y = dropout_classes(y, self.num_classes, dropout_prob=self.dropout_prob)
+        # print("t_emb:", t_emb.shape)
+        # TODO: enable class dropout if not doing it outside of the forward pass
+        # in DiffusionModel.train.
+        # if training:
+        #     y = dropout_classes(y, self.num_classes, dropout_prob=self.dropout_prob)
         y_emb = self.embedding(y)
+        # print("y_emb:", y_emb.shape)
         c = t_emb + y_emb
-        # print("c:", c.shape)
 
         for block in self.blocks:
             x = block(x, c)
@@ -934,7 +1014,7 @@ def q2(train_data, test_data, load=False):
     return train_losses, test_losses, samples
 
 
-def q3_b(train_data, train_labels, test_data, test_labels, vae):
+def q3_b(train_data, train_labels, test_data, test_labels, vae, load=True, save=False):
     """
     train_data: A (50000, 32, 32, 3) numpy array of images in [0, 1]
     train_labels: A (50000,) numpy array of class labels
@@ -949,28 +1029,35 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
       The array represents a 10 x 10 grid of generated samples. Each row represents 10 samples generated
       for a specific class (i.e. row 0 is class 0, row 1 class 1, ...). Use 512 diffusion timesteps
     """
-    train_data = norm_img(train_data)
-    test_data = norm_img(test_data)
-    train_data = ptu.tensor(train_data).float().permute(0, 3, 1, 2)
-    test_data = ptu.tensor(test_data).float().permute(0, 3, 1, 2)
+    scale_factor = 1.31  # 1.2716
 
-    # [50000, 4, 8, 8]
-    enc_train_data = vae.encode(train_data)
-    enc_test_data = vae.encode(test_data)
+    enc_train_data_shape = [50000, 4, 8, 8]
 
-    scale_factor = 1.2716
-    enc_train_data = enc_train_data / scale_factor
-    enc_test_data = enc_test_data / scale_factor
+    if load:
+        train_loader = None
+        test_loader = None
+    else:
+        train_data = norm_img(train_data)
+        test_data = norm_img(test_data)
+        train_data = ptu.tensor(train_data).float().permute(0, 3, 1, 2)
+        test_data = ptu.tensor(test_data).float().permute(0, 3, 1, 2)
 
-    batch_size = 256
-    train_dataset = CustomImageDataset(enc_train_data, train_labels)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
-    )
-    test_dataset = CustomImageDataset(enc_test_data, test_labels)
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=True
-    )
+        # [50000, 4, 8, 8]
+        enc_train_data = vae.encode(train_data)
+        enc_test_data = vae.encode(test_data)
+
+        enc_train_data = enc_train_data / scale_factor
+        enc_test_data = enc_test_data / scale_factor
+
+        batch_size = 256
+        train_dataset = CustomImageDataset(enc_train_data, train_labels)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True
+        )
+        test_dataset = CustomImageDataset(enc_test_data, test_labels)
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=batch_size, shuffle=False
+        )
 
     patch_size = 2
     hidden_size = 512
@@ -978,12 +1065,13 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     num_layers = 12
     num_classes = 10
     dit = DiT(
-        enc_train_data.shape,
+        enc_train_data_shape,
         patch_size=patch_size,
         hidden_size=hidden_size,
         num_heads=num_heads,
         num_layers=num_layers,
         num_classes=num_classes,
+        patch_conv=False,
     )
 
     dmodel = DiffusionModel(
@@ -995,21 +1083,38 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
         has_labels=True,
     )
 
-    save_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q3"
-    train_losses, test_losses = dmodel.train(save_dir=save_dir)
+    if load:
+        load_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q3/2024-03-20_01-33-49"
+        dmodel.load(os.path.join(load_dir, "diffusion_model_final.pt"))
+        train_losses = np.load(os.path.join(load_dir, "train_losses.npy"))
+        test_losses = np.load(os.path.join(load_dir, "test_losses.npy"))
+    else:
+        process_labels_fn = functools.partial(
+            dropout_classes, null_class=num_classes, dropout_prob=0.1
+        )
+        save_dir = (
+            "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q3"
+            if save
+            else None
+        )
+        train_losses, test_losses = dmodel.train(
+            process_labels_fn=process_labels_fn, save_dir=save_dir
+        )
 
     # Sample
     num_labels = 10
     num_samples = 10
     num_steps = 512
-    clip = (-1, 1)
+    clip = (-20, 20)
+    clip_noise = (-3, 3)
     enc_samples = sample(
         dmodel,
         num_samples,
         [num_steps],
-        enc_train_data.shape[1:],
+        enc_train_data_shape[1:],
         labels=list(range(num_labels)),
         clip=clip,
+        clip_noise=clip_noise,
     )
     # Select the only return step of 512.
     enc_samples = enc_samples[:, 0]  # [num_labels=10, num_samples=10, 4, 8, 8]
@@ -1027,12 +1132,88 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     return train_losses, test_losses, samples
 
 
+def q3_c(vae):
+    """
+    vae: a pretrained vae
+
+    Returns
+    - a numpy array of size (4, 10, 10, 32, 32, 3) of samples in [0, 1] drawn from your model.
+      The array represents a 4 x 10 x 10 grid of generated samples - 4 10 x 10 grid of samples
+      with 4 different CFG values of w = {1.0, 3.0, 5.0, 7.5}. Each row of the 10 x 10 grid
+      should contain samples of a different class. Use 512 diffusion sampling timesteps.
+    """
+    scale_factor = 1.31  # 1.2716
+    enc_train_data_shape = [50000, 4, 8, 8]
+
+    patch_size = 2
+    hidden_size = 512
+    num_heads = 8
+    num_layers = 12
+    num_classes = 10
+    dit = DiT(
+        [1, 4, 8, 8],  # Encoded image shape
+        patch_size=patch_size,
+        hidden_size=hidden_size,
+        num_heads=num_heads,
+        num_layers=num_layers,
+        num_classes=num_classes,
+    )
+
+    dmodel = DiffusionModel(
+        None,
+        None,
+        model=dit,
+        has_labels=True,
+    )
+
+    load_dir = "/nas/ucb/ebronstein/deepul/deepul/homeworks/hw4/models/q3/2024-03-20_01-33-49/diffusion_model_final.pt"
+    dmodel.load(load_dir)
+
+    # Sample
+    cfg_ws = [1.0, 3.0, 5.0, 7.5]
+    num_labels = 10
+    num_samples = 10
+    num_steps = 512
+    clip = (-20, 20)
+    clip_noise = (-3, 3)
+    all_samples = []
+    for cfg_w in cfg_ws:
+        print("w:", cfg_w)
+        enc_samples = sample(
+            dmodel,
+            num_samples,
+            [num_steps],
+            enc_train_data_shape[1:],
+            labels=list(range(num_labels)),
+            clip=clip,
+            clip_noise=clip_noise,
+            cfg_w=cfg_w,
+            null_class=num_classes,
+        )
+        # Select the only return step of 512.
+        enc_samples = enc_samples[:, 0]  # [num_labels=10, num_samples=10, 4, 8, 8]
+        flat_enc_samples = enc_samples.reshape(
+            -1, 4, 8, 8
+        )  # [num_labels * num_samples = 100, 4, 8, 8]
+        # Decode
+        flat_enc_samples *= scale_factor
+        # [num_labels * num_samples = 100, 3, 32, 32]
+        flat_samples = vae.decode(flat_enc_samples).detach().cpu().numpy()
+        samples = flat_samples.reshape(num_labels, num_samples, 3, 32, 32)
+        samples = samples.transpose(0, 1, 3, 4, 2)
+        samples = unnorm_img(samples)
+        all_samples.append(samples)
+
+    all_samples = np.array(all_samples)
+    return all_samples
+
+
 if __name__ == "__main__":
     ptu.set_gpu_mode(True)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("question", choices=[1, 2, 3], type=int)
-    parser.add_argument("--part", choices=["a", "b"], required=False)
+    parser.add_argument("--part", choices=["a", "b", "c"], required=False)
 
     args = parser.parse_args()
 
@@ -1042,6 +1223,8 @@ if __name__ == "__main__":
         q2_save_results(q2)
     elif args.question == 3 and args.part == "b":
         q3b_save_results(q3_b)
+    elif args.question == 3 and args.part == "c":
+        q3c_save_results(q3_c)
     else:
         raise ValueError(
             f"Invalid question {args.question} and part {args.part} combination."
